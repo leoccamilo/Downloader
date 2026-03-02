@@ -1,0 +1,9 @@
+# Downloader / dump_multiple_enms.py
+# enmscripting (Ericsson): instalar a partir do wheel:
+#   pip install "C:\Tools\enm_client_scripting-1.22.2-py2.py3-none-any.whl"
+flask>=2.0
+pandas
+pyarrow
+openpyxl
+xlsxwriter
+lxml
