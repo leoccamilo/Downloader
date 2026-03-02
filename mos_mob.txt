@@ -1,0 +1,17 @@
+EUtranCellFDD.*;
+EUtranCellTDD.*;
+ENodeBFunction.*;
+EUtranCellRelation.*;
+GUtranCellRelation.*;
+GUtranFreqRelation.*;
+ExternalGUtranCell.*;
+AddressIPv4.*;
+NRCellCU.*;
+NRCellDU.*;
+NRCellRelation.*;
+TermpointToGNodeB.*;
+TermpointToENodeB.*;
+TermpointToGNB.*;
+GNBCUCPFunction.*;
+ManagedElement.*;
+ExternalNRCellCU.*;
