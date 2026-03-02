@@ -275,3 +275,14 @@ Validation:
   - `C:\Downloader` has no `.git` directory (not a Git repository), so commit/push is not available from this folder.
 - Operational note:
   - Site List `Base dir` remains user-editable and persisted; automatic base-dir inference depends on browser exposing local file path metadata.
+
+## 22) GitHub publication (clean scope)
+- Repository: `https://github.com/leoccamilo/Downloader`
+- Published only project-essential source/docs/runtime launchers.
+- Excluded local-only artifacts:
+  - `venv/`, `__pycache__/`
+  - local dump/parser outputs (`data/*` generated content, `output/`)
+  - heavy binaries/installers (`*.zip`, `*.whl`)
+  - ad-hoc test notebook/files (`*.ipynb`, `site_scope_test.csv`)
+- Added placeholders (`.gitkeep`) for expected runtime folders:
+  - `data/input`, `data/output`, `data/enriched`, `cellref`, `arquivos`
