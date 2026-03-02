@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Downloader – ENM Dump</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="navbar navbar-dark px-3">
+      <span class="navbar-brand mb-0 h1">Downloader</span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="nav-status small" id="nav-status">Ready</span>
+      </div>
+    </nav>
+
+    <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-enm-btn" data-bs-toggle="tab" data-bs-target="#tab-enm-dump" type="button">
+          <i class="bi bi-download"></i> ENM Dump
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-viewer-btn" data-bs-toggle="tab" data-bs-target="#tab-file-viewer" type="button">
+          <i class="bi bi-file-earmark-spreadsheet"></i> File Viewer
+        </button>
+      </li>
+      <li class="nav-item ms-auto me-2 d-flex align-items-center" role="presentation">
+        <button class="btn btn-run-all btn-sm" type="button" id="btn-run-all" title="Execute Dump + XML Parser em sequência">
+          <i class="bi bi-rocket-takeoff"></i> Run All
+        </button>
+      </li>
+    </ul>
+
+    <!-- Run All Modal -->
+    <div class="modal fade" id="runAllModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0">
+          <div class="modal-header bg-dark text-white py-2">
+            <h6 class="modal-title"><i class="bi bi-rocket-takeoff"></i> Run All — <span id="run-all-phase">Preparing...</span></h6>
+            <button type="button" class="btn btn-sm btn-outline-light" id="btn-run-all-close" data-bs-dismiss="modal" disabled>
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div class="modal-body p-0">
+            <textarea class="form-control font-monospace small run-all-log" id="run-all-log" rows="22" readonly></textarea>
+          </div>
+          <div class="modal-footer py-1 bg-light">
+            <span class="small text-muted me-auto" id="run-all-status">Waiting...</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-run-all-cancel" disabled>
+              <i class="bi bi-stop-fill"></i> Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content main-container" id="mainTabContent">
+      <div class="tab-pane fade show active" id="tab-enm-dump" role="tabpanel">
+        <div class="container-fluid">
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <!-- ENM Connection -->
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-hdd-network"></i> ENM Connection</span>
+                  <div class="d-flex gap-1">
+                    <select class="form-select form-select-sm bg-transparent text-white border-light" id="enm-profile-select" style="width: auto; min-width: 130px; font-size: 0.78rem;">
+                      <option value="">-- Profile --</option>
+                    </select>
+                    <button class="btn btn-outline-light btn-sm" id="btn-save-profile" title="Save Profile">
+                      <i class="bi bi-save"></i>
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" id="btn-delete-profile" title="Delete Profile">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <p class="text-muted small mb-2"><strong>Profile</strong> stores username and password per ENM. Load a profile and check <strong>Include in dump</strong> only for ENMs you want to use.</p>
+                  <div class="table-responsive">
+                    <table class="table table-sm table-borderless mb-0 enm-table">
+                      <thead>
+                        <tr>
+                          <th class="fw-bold">ENM</th>
+                          <th class="fw-bold text-center" style="width: 90px;">Include in dump</th>
+                          <th class="fw-bold">Username</th>
+                          <th class="fw-bold">Password</th>
+                        </tr>
+                      </thead>
+                      <tbody id="enm-rows"></tbody>
+                    </table>
+                  </div>
+                  <div class="mb-0 mt-2">
+                    <label class="form-label fw-bold small">Output Directory (shared)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="text" class="form-control" id="enm-output-dir" value="C:/eNB_Fake/data/input">
+                      <input type="file" id="folder-picker-output" webkitdirectory directory style="display:none">
+                      <button class="btn btn-outline-secondary" id="btn-browse-output" type="button" title="Browse for folder">
+                        <i class="bi bi-folder2-open"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Site list: update from folder or load existing file -->
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-secondary text-white">
+                  <i class="bi bi-geo-alt"></i> Site List
+                </div>
+                <div class="card-body">
+                  <label class="form-label fw-bold small">Update site list</label>
+                  <p class="form-text small text-muted mb-1">Select one or more source files (CSV/TXT/XLSX/XLS). The tool detects 4G/5G automatically, merges LTE + NR, and saves <code>sites_list.txt</code> in the directory below.</p>
+                  <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text">Base dir</span>
+                    <input type="text" class="form-control font-monospace" id="site-list-folder-path" placeholder="e.g. C:/Downloader/cellref">
+                    <input type="file" id="folder-picker-site-list-base" webkitdirectory directory style="display:none">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-site-list-base" title="Browse for base directory">
+                      <i class="bi bi-folder2-open"></i>
+                    </button>
+                    <input type="file" id="site-list-folder-input" multiple accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+                    <button class="btn btn-primary" type="button" id="btn-update-site-list">
+                      <i class="bi bi-folder2-open"></i> Select files and update
+                    </button>
+                  </div>
+                  <hr class="my-2">
+                  <label class="form-label fw-bold small">Or load existing site list file</label>
+                  <div class="input-group input-group-sm">
+                    <input type="file" class="form-control" id="site-list-file" accept=".txt,.csv,text/plain,text/csv">
+                    <button class="btn btn-outline-primary" type="button" id="btn-load-site-list">
+                      <i class="bi bi-upload"></i> Load
+                    </button>
+                  </div>
+                  <p class="small mb-0 mt-1" id="site-list-status"><span class="text-muted">No site list loaded.</span></p>
+                </div>
+              </div>
+
+              <!-- Scope: By UF / By Municipality / By site list -->
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-geo"></i> Scope</span>
+                  <div>
+                    <button class="btn btn-outline-light btn-sm" id="btn-uf-all">All</button>
+                    <button class="btn btn-outline-light btn-sm" id="btn-uf-clear">Clear</button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="mb-2">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input scope-radio" type="radio" name="scope" id="scope-uf" value="uf" checked>
+                      <label class="form-check-label small" for="scope-uf">By UF</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input scope-radio" type="radio" name="scope" id="scope-municipality" value="municipality">
+                      <label class="form-check-label small" for="scope-municipality">By City</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input scope-radio" type="radio" name="scope" id="scope-list" value="list">
+                      <label class="form-check-label small" for="scope-list">By site list</label>
+                    </div>
+                  </div>
+                  <div id="scope-uf-panel">
+                    <div class="uf-checkboxes" id="uf-checkboxes"></div>
+                  </div>
+                  <div id="scope-municipality-panel" style="display:none;">
+                    <div class="row g-2 mb-2">
+                      <div class="col-4">
+                        <label class="form-label small mb-0">UF</label>
+                        <select class="form-select form-select-sm" id="scope-uf-select"></select>
+                      </div>
+                      <div class="col-8">
+                        <label class="form-label small mb-0">City</label>
+                        <div class="input-group input-group-sm">
+                          <input type="text" class="form-control form-control-sm" id="scope-municipality-input" placeholder="Type city name..." list="municipality-datalist" autocomplete="off">
+                          <button class="btn btn-outline-primary" type="button" id="btn-add-city">Add</button>
+                        </div>
+                        <datalist id="municipality-datalist"></datalist>
+                        <div id="municipality-suggestions" class="small mt-1"></div>
+                        <div id="municipality-selected" class="small mt-1"></div>
+                      </div>
+                    </div>
+                    <div class="mb-1">
+                      <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="scope-tech-lte" checked>
+                        <label class="form-check-label small" for="scope-tech-lte">LTE</label>
+                      </div>
+                      <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="scope-tech-nr" checked>
+                        <label class="form-check-label small" for="scope-tech-nr">NR (5G)</label>
+                      </div>
+                    </div>
+                    <p class="small mb-0 text-muted" id="scope-municipality-count"></p>
+                  </div>
+                  <div id="scope-list-panel" style="display:none;">
+                    <label class="form-label small mb-0">Site IDs (one per line or separated by ; or ,)</label>
+                    <textarea class="form-control form-control-sm font-monospace" id="scope-list-textarea" rows="4" placeholder="Site1&#10;Site2&#10;..."></textarea>
+                  </div>
+                </div>
+              </div>
+
+              <!-- MO Selection -->
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-list-check"></i> MO Selection</span>
+                  <span class="badge bg-light text-dark" id="mo-count-badge">0 / 0</span>
+                </div>
+                <div class="card-body">
+                  <div class="d-flex gap-2 mb-2 flex-wrap">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-mo-select-all" title="Select all MOs">
+                      <i class="bi bi-check-all"></i> Select All
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-mo-clear" title="Clear all MOs">
+                      <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                    <button type="button" class="btn btn-outline-warning btn-sm" id="btn-mo-select-mob" title="Select only MOs from mos_mob.txt (MoB preset)">
+                      <i class="bi bi-bookmark-star"></i> Select MoB
+                    </button>
+                  </div>
+                  <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="mo-search-input" placeholder="Filter MOs..." autocomplete="off">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-mo-search-clear" title="Clear filter">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </div>
+                  <div class="mo-default-list border rounded p-2 mb-2" id="mo-default-list" style="max-height: 320px; overflow-y: auto;"></div>
+                  <hr class="my-2">
+                  <label class="form-label small fw-bold">Additional MOs <span class="text-muted fw-normal">(optional)</span></label>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="mo-custom-input" placeholder="e.g. OtherMO.*">
+                    <button class="btn btn-outline-primary" id="btn-add-mo">
+                      <i class="bi bi-plus-lg"></i> Add
+                    </button>
+                  </div>
+                  <div id="mo-custom-list" class="mt-2"></div>
+                </div>
+              </div>
+
+              <div class="card card-compact mb-3" id="enm-log-card" style="display:none;">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-journal-text"></i> Execution Log</span>
+                  <span class="badge bg-info" id="enm-log-step">--</span>
+                </div>
+                <div class="card-body p-0">
+                  <textarea class="form-control log-area" id="enm-log-area" rows="10" readonly></textarea>
+                </div>
+              </div>
+              <div id="enm-result" class="alert mt-2" style="display:none;"></div>
+            </div>
+
+            <div class="col-lg-6">
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-dark text-white">
+                  <i class="bi bi-terminal"></i> Command
+                </div>
+                <div class="card-body">
+                  <textarea class="form-control form-control-sm mb-2 font-monospace" id="enm-command" rows="3" placeholder="Click 'Generate Command' to build the command..."></textarea>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-primary btn-sm" id="btn-generate-command">
+                      <i class="bi bi-gear"></i> Generate Command
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" id="btn-copy-command">
+                      <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                    <button class="btn btn-success btn-sm" id="btn-execute-dump">
+                      <i class="bi bi-play-fill"></i> Execute Dump
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" id="btn-export-script" title="Export JSON to run with dump_multiple_enms.py">
+                      <i class="bi bi-download"></i> Export for script
+                    </button>
+                  </div>
+                  <p class="form-text small mt-2 mb-0">Generate command, then click <strong>Execute Dump</strong> to run on each selected ENM. Logs appear in the panel below. "Export for script" is only if you want to run <code>run_dump.bat &lt;config.json&gt;</code> in a terminal.</p>
+                </div>
+              </div>
+
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-journal-text"></i> Logs</span>
+                  <button class="btn btn-outline-light btn-sm" type="button" id="btn-clear-logs" title="Clear logs">
+                    <i class="bi bi-trash"></i> Clear
+                  </button>
+                </div>
+                <div class="card-body">
+                  <p class="form-text small text-muted mb-1">Progress appears here when you click <strong>Execute Dump</strong>. (Open the tool with START_DOWNLOADER.bat so Execute Dump runs from this page.)</p>
+                  <textarea class="form-control font-monospace small" id="dump-logs" rows="12" readonly placeholder="Click Execute Dump to run the dump — logs will appear here."></textarea>
+                </div>
+              </div>
+
+              <div class="card card-compact mb-3">
+                <div class="card-header bg-primary text-white">
+                  <i class="bi bi-file-code"></i> XML Parser
+                </div>
+                <div class="card-body">
+                  <p class="text-muted small mb-2">Extracts ZIPs, parses 3GPP XMLs to Parquet, converts to TXT and removes Parquets.</p>
+                  <div class="mb-3">
+                    <label class="form-label fw-bold small">Input Directory (ZIP/XML files)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="text" class="form-control" id="parser-input-dir" value="C:/Downloader/data/input">
+                      <input type="file" id="folder-picker-parser-input" webkitdirectory directory style="display:none">
+                      <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-input" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                    </div>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label fw-bold small">Output Directory (parsed TXT files)</label>
+                    <div class="input-group input-group-sm">
+                      <input type="text" class="form-control" id="parser-output-dir" value="C:/Downloader/data/output">
+                      <input type="file" id="folder-picker-parser-output" webkitdirectory directory style="display:none">
+                      <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-output" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                    </div>
+                  </div>
+                  <hr class="my-2">
+                  <div class="mb-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="chk-customize-txts">
+                      <label class="form-check-label fw-bold small" for="chk-customize-txts">Enrich Files</label>
+                    </div>
+                    <p class="text-muted small mb-0 ms-4">Run enrichment scripts (LTE FDD, TDD, 5G) using <code>cellref.xlsx</code>. Enriched files are saved to a separate directory.</p>
+                  </div>
+                  <div id="enrich-options-group" style="display:none;">
+                    <div class="mb-3">
+                      <label class="form-label fw-bold small">Cellref Directory (cellref.xlsx)</label>
+                      <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="parser-cellref-dir" value="C:/Downloader/cellref">
+                        <input type="file" id="folder-picker-parser-cellref" webkitdirectory directory style="display:none">
+                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-cellref" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                      </div>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label fw-bold small">Enriched Files Directory</label>
+                      <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="parser-enriched-dir" value="C:/Downloader/data/enriched">
+                        <input type="file" id="folder-picker-parser-enriched" webkitdirectory directory style="display:none">
+                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-enriched" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" id="btn-run-parser" type="button">
+                    <i class="bi bi-play-fill"></i> Run Parser
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm ms-1" id="btn-run-parser-cancel" disabled title="Cancel running parser">
+                    <i class="bi bi-stop-fill"></i> Cancel
+                  </button>
+                  <div id="parser-result" class="mt-2 small" style="display:none;">
+                    <textarea class="form-control font-monospace small" id="parser-log-area" rows="12" readonly placeholder="Logs will appear here..."></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File Viewer tab -->
+      <div class="tab-pane fade" id="tab-file-viewer" role="tabpanel">
+        <div class="container-fluid py-2">
+          <div class="card card-compact mb-3">
+            <div class="card-header bg-dark text-white d-flex flex-wrap align-items-center gap-2">
+              <span><i class="bi bi-file-earmark-spreadsheet"></i> File Viewer</span>
+              <input type="file" id="file-viewer-input" accept=".txt,.csv,.xlsx,.xls" style="display:none">
+              <button type="button" class="btn btn-sm btn-outline-light" id="btn-file-viewer-select">
+                <i class="bi bi-folder2-open"></i> Select file (TXT, CSV, XLSX)
+              </button>
+              <span class="small text-white-50" id="file-viewer-name">No file loaded</span>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <span class="small" id="file-viewer-stats">--</span>
+                <button type="button" class="btn btn-sm btn-outline-light d-none" id="btn-file-viewer-more-cols" title="Show more columns">
+                  <i class="bi bi-arrows-expand"></i> More columns
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-warning d-none" id="btn-file-viewer-close" title="Close file and free memory">
+                  <i class="bi bi-x-circle"></i> Close file
+                </button>
+                <div class="dropdown">
+                  <button type="button" class="btn btn-sm btn-outline-light dropdown-toggle" id="btn-export-filtered" disabled data-bs-toggle="dropdown" title="Export filtered data">
+                    <i class="bi bi-download"></i> Export filtered
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="#" data-export="csv"><i class="bi bi-file-text"></i> CSV</a></li>
+                    <li><a class="dropdown-item" href="#" data-export="txt"><i class="bi bi-filetype-txt"></i> TXT (tab)</a></li>
+                    <li><a class="dropdown-item" href="#" data-export="xlsx"><i class="bi bi-file-earmark-excel"></i> XLSX</a></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label fw-bold small mb-1">Output folder</label>
+                <p class="form-text small text-muted mb-1">Exports are saved here when using the server. Path is remembered between sessions.</p>
+                <div class="input-group input-group-sm">
+                  <input type="text" class="form-control font-monospace" id="file-viewer-output-dir" placeholder="C:/Downloader/data/exports" value="C:/Downloader/data/exports">
+                  <input type="file" id="folder-picker-file-viewer-output" webkitdirectory directory style="display:none">
+                  <button class="btn btn-outline-secondary" type="button" id="btn-browse-file-viewer-output" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="card-body p-0 border-top">
+              <div id="file-viewer-sheet-tabs" class="d-none bg-dark border-bottom px-2 py-1 d-flex flex-wrap gap-1"></div>
+              <div id="file-viewer-placeholder" class="p-4 text-center text-muted">
+                <i class="bi bi-file-earmark-spreadsheet display-4"></i>
+                <p class="mt-2 mb-0">Select a file (TXT, CSV or XLSX) to view and filter. Use column headers to filter like Excel.</p>
+              </div>
+              <div id="file-viewer-container" class="d-none overflow-auto" style="max-height: 70vh;">
+                <table class="table table-sm table-bordered table-hover mb-0 font-monospace small" id="file-viewer-table">
+                  <thead class="table-dark sticky-top" id="file-viewer-thead"></thead>
+                  <tbody id="file-viewer-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-indicator">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Ready</span>
+      </div>
+      <span id="status-timestamp">--</span>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+  <script src="file-viewer.js"></script>
+</body>
+</html>
