@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local runtime data and generated outputs
+data/input/*
+data/output/*
+data/enriched/*
+output/
+arquivos/
+cellref/*.xlsx
+cellref/*.xls
+cellref/*.csv
+cellref/*.txt
+cellref/*.parquet
+cellref/*.zip
+
+# Keep folder structure
+!data/input/.gitkeep
+!data/output/.gitkeep
+!data/enriched/.gitkeep
+!cellref/.gitkeep
+!arquivos/.gitkeep
+
+# Large/binary/local installers
+*.zip
+*.whl
+*.parquet
+*.log
+
+# Tooling/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.swp
+
+# Local test/sample files
+site_scope_test.csv
+*.ipynb
