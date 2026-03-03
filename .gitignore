@@ -8,6 +8,7 @@ __pycache__/
 
 # Virtual environments
 venv/
+venv_build/
 .venv/
 env/
 
@@ -37,12 +38,25 @@ cellref/*.zip
 *.parquet
 *.log
 
+# Build outputs (Nuitka / PyInstaller)
+dist_nuitka/
+dist/
+build/
+*.spec
+*.onefile-build/
+launcher.py
+
 # Tooling/editor noise
 .DS_Store
 Thumbs.db
 *.tmp
 *.bak
 *.swp
+$null
+.claude/
+repo_clean/
+repo_meta/
+pyi_contents.txt
 
 # Local test/sample files
 site_scope_test.csv

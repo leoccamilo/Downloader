@@ -1,0 +1,6 @@
+# Dependencias do server_downloader.py (compiladas no exe)
+# NÃO incluir: pyarrow, lxml, xlsxwriter, enmscripting
+# (esses são usados apenas pelos scripts subprocess que rodam via Python do sistema)
+flask>=2.0
+pandas
+openpyxl

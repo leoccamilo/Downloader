@@ -20,6 +20,7 @@ import unicodedata
 import subprocess
 import sys
 import tempfile
+import shutil
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -29,9 +30,15 @@ except ImportError:
     print("Install Flask: pip install flask")
     sys.exit(1)
 
-# When frozen (Nuitka exe), use exe directory; otherwise use script directory
+# Resolve runtime base directory for source, standalone and onefile modes.
+# In onefile mode, data files are extracted to a temp folder where __file__ lives.
 if getattr(sys, "frozen", False):
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    module_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else ""
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    if module_dir and os.path.isdir(os.path.join(module_dir, "web-tool")):
+        SCRIPT_DIR = module_dir
+    else:
+        SCRIPT_DIR = exe_dir
 else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_TOOL_DIR = os.path.join(SCRIPT_DIR, "web-tool")
@@ -58,6 +65,10 @@ def get_python_for_dump():
         return embed_python
     if os.path.isfile(venv_python):
         return venv_python
+    if getattr(sys, "frozen", False):
+        system_python = shutil.which("python") or shutil.which("py")
+        if system_python:
+            return system_python
     return sys.executable
 
 
