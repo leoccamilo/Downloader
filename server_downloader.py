@@ -820,6 +820,18 @@ def api_run_parser_pipeline():
     )
 
 
+@app.route("/api/shutdown", methods=["POST", "GET"])
+def api_shutdown():
+    """Shut down the server (called by the browser page on close)."""
+    import threading
+    def _exit():
+        import time
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_exit, daemon=True).start()
+    return "OK", 200
+
+
 if __name__ == "__main__":
     if not os.path.isdir(WEB_TOOL_DIR):
         print("web-tool directory not found next to server_downloader.py")

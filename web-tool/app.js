@@ -1716,3 +1716,8 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Shut down the backend when the browser page/tab is closed
+window.addEventListener('beforeunload', function () {
+  navigator.sendBeacon('http://127.0.0.1:8765/api/shutdown');
+});
