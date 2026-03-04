@@ -55,16 +55,25 @@ CELLREF_DEFAULT_PATH = "C:\\Downloader\\cellref"
 
 def get_python_for_dump():
     """Use bundled python_embed, venv's Python, or sys.executable for running dump/parser scripts."""
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
     if sys.platform == "win32":
-        embed_python = os.path.join(SCRIPT_DIR, "python_embed", "python.exe")
-        venv_python = os.path.join(SCRIPT_DIR, "venv", "Scripts", "python.exe")
+        candidates = [
+            os.path.join(SCRIPT_DIR, "python_embed", "python.exe"),
+            os.path.join(SCRIPT_DIR, "venv", "Scripts", "python.exe"),
+            # When exe is in dist_nuitka/, check venv one level up (C:\Downloader\venv)
+            os.path.normpath(os.path.join(exe_dir, "..", "venv", "Scripts", "python.exe")),
+            os.path.join(exe_dir, "venv", "Scripts", "python.exe"),
+        ]
     else:
-        embed_python = os.path.join(SCRIPT_DIR, "python_embed", "bin", "python3")
-        venv_python = os.path.join(SCRIPT_DIR, "venv", "bin", "python")
-    if os.path.isfile(embed_python):
-        return embed_python
-    if os.path.isfile(venv_python):
-        return venv_python
+        candidates = [
+            os.path.join(SCRIPT_DIR, "python_embed", "bin", "python3"),
+            os.path.join(SCRIPT_DIR, "venv", "bin", "python"),
+            os.path.normpath(os.path.join(exe_dir, "..", "venv", "bin", "python")),
+            os.path.join(exe_dir, "venv", "bin", "python"),
+        ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
     if getattr(sys, "frozen", False):
         system_python = shutil.which("python") or shutil.which("py")
         if system_python:
@@ -228,36 +237,44 @@ def serve_static(path):
 
 def stream_run_dump(config):
     """Run dump_multiple_enms.py with config and yield stdout/stderr line by line."""
-    fd, path = tempfile.mkstemp(suffix=".json", prefix="downloader_config_")
+    import traceback as _tb
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        if not os.path.isfile(DUMP_SCRIPT):
-            yield "Error: dump_multiple_enms.py not found in script directory.\n"
-            return
-        python_exe = get_python_for_dump()
-        proc = subprocess.Popen(
-            [python_exe, DUMP_SCRIPT, path],
-            cwd=SCRIPT_DIR,
-            env=_build_direct_network_env(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            creationflags=_NO_WINDOW,
-        )
-        for line in proc.stdout:
-            yield line if line.endswith("\n") else line + "\n"
-        proc.wait()
-        if proc.returncode != 0:
-            yield f"\nProcess exited with code {proc.returncode}\n"
-    finally:
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="downloader_config_")
         try:
-            os.unlink(path)
-        except OSError:
-            pass
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            if not os.path.isfile(DUMP_SCRIPT):
+                yield f"Error: dump_multiple_enms.py not found.\n  SCRIPT_DIR: {SCRIPT_DIR}\n  DUMP_SCRIPT: {DUMP_SCRIPT}\n"
+                return
+            python_exe = get_python_for_dump()
+            proc = subprocess.Popen(
+                [python_exe, DUMP_SCRIPT, path],
+                cwd=SCRIPT_DIR,
+                env=_build_direct_network_env(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                creationflags=_NO_WINDOW,
+            )
+            for line in proc.stdout:
+                yield line if line.endswith("\n") else line + "\n"
+            proc.wait()
+            if proc.returncode != 0:
+                yield f"\nProcess exited with code {proc.returncode}\n"
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    except Exception as _exc:
+        yield f"[dump error] {type(_exc).__name__}: {_exc}\n"
+        yield f"  python_exe: {get_python_for_dump()}\n"
+        yield f"  SCRIPT_DIR: {SCRIPT_DIR}\n"
+        yield f"  DUMP_SCRIPT: {DUMP_SCRIPT}\n"
+        yield _tb.format_exc() + "\n"
 
 
 @app.route("/api/run-dump", methods=["POST", "OPTIONS"])

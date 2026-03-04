@@ -91,8 +91,6 @@ if __name__ == "__main__":
         err_path = os.path.join(app_dir, "downloader_error.log")
         with open(err_path, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)
-        traceback.print_exc()
-        input("Press Enter to exit...")
         sys.exit(1)
 "@
 # Use .NET to write without BOM
@@ -151,7 +149,7 @@ Write-Host "This may take 10-20 minutes depending on your system..." -Foreground
 python -m nuitka `
     --onefile `
     --standalone `
-    --windows-console-mode=force `
+    --windows-console-mode=disable `
     --assume-yes-for-downloads `
     --follow-import-to=flask `
     --follow-import-to=werkzeug `
@@ -203,9 +201,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "`nThe application will:" -ForegroundColor Green
     Write-Host "  - Start the Flask server on http://127.0.0.1:8765" -ForegroundColor White
     Write-Host "  - Automatically open in your default browser" -ForegroundColor White
-    Write-Host "`nNOTE: Console window is visible for debugging." -ForegroundColor Yellow
-    Write-Host "After confirming it works, change --windows-console-mode=force" -ForegroundColor Yellow
-    Write-Host "to --windows-console-mode=disable in build_nuitka.ps1" -ForegroundColor Yellow
+    Write-Host "`nNOTE: Console window is hidden (--windows-console-mode=disable)." -ForegroundColor Yellow
+    Write-Host "Startup errors are written to downloader_error.log next to the exe." -ForegroundColor Yellow
 
     Write-Host "`nIMPORTANT: The subprocess scripts (dump, parquet, xml, etc.) are embedded" -ForegroundColor Cyan
     Write-Host "inside the .exe and extracted at runtime. They require Python to be installed" -ForegroundColor Cyan
