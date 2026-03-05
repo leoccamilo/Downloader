@@ -659,12 +659,16 @@ function updateMunicipalityDatalist() {
     updateMunicipalityCount();
     return;
   }
-  const matches = [...new Set(
+  const nq = normalizeText(q);
+  const allCities = [...new Set(
     siteListData
-      .filter(r => selectedUfs.includes((r.UF || '').toUpperCase()) && normalizeText(r.MUNICIPIO).includes(normalizeText(q)))
+      .filter(r => selectedUfs.includes((r.UF || '').toUpperCase()))
       .map(r => (r.MUNICIPIO || '').trim())
       .filter(Boolean)
-  )].sort();
+  )];
+  const startsWith = allCities.filter(c => normalizeText(c).startsWith(nq)).sort();
+  const contains  = allCities.filter(c => !normalizeText(c).startsWith(nq) && normalizeText(c).includes(nq)).sort();
+  const matches = nq ? [...startsWith, ...contains] : allCities.sort();
   matches.slice(0, 100).forEach(m => {
     const opt = document.createElement('option');
     opt.value = m;

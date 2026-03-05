@@ -128,7 +128,7 @@ def _read_uploaded_table(file_storage):
 
     if ext in (".csv", ".txt"):
         decoded = None
-        for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
             try:
                 decoded = content.decode(enc)
                 break
@@ -163,6 +163,137 @@ def _normalize_col_name(name):
     txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
     txt = re.sub(r"[^a-z0-9]+", "", txt)
     return txt
+
+
+def _read_disk_table(path):
+    """Read an xlsx/csv/txt file from disk path and return a DataFrame."""
+    try:
+        import pandas as pd
+    except ImportError as e:
+        raise RuntimeError(f"pandas is required: {e}")
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".xlsx", ".xls"):
+        df = pd.read_excel(path, dtype=str)
+        df = df.fillna("")
+    elif ext in (".csv", ".txt"):
+        with open(path, "rb") as f:
+            content = f.read()
+        decoded = None
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                decoded = content.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if decoded is None:
+            decoded = content.decode("latin-1", errors="replace")
+        sample = "\n".join(decoded.splitlines()[:5])
+        delim = _detect_delimiter(sample)
+        df = pd.read_csv(io.StringIO(decoded), sep=delim, dtype=str, keep_default_na=False)
+    else:
+        raise ValueError(f"Unsupported file extension: {ext}")
+    df.columns = [(c or "").strip() for c in df.columns]
+    return df
+
+
+def _extract_site_rows(df, filename, rows_out, seen):
+    """
+    Extract site rows from a DataFrame into rows_out (list of dicts).
+    seen is a set used for deduplication (mutated in place).
+    Returns (added_count, warning_or_None).
+    """
+    cols_map = {_normalize_col_name(c): c for c in df.columns}
+    regional_col = _pick_col(cols_map, ["regional", "regiao", "region", "regionalname", "area", "macroregiao"])
+    cn_col = _pick_col(cols_map, ["cn", "ddd", "market", "mercado"])
+    uf_col = _pick_col(cols_map, ["uf", "estado", "state", "siglauf"])
+    municipio_col = _pick_col(cols_map, ["municipio", "municpio", "cidade", "city", "municipality", "mun", "cluster"])
+    enb_col = _pick_col(cols_map, ["enb", "enodeb", "enodebid", "idenb", "enodebname", "siteenb"])
+    site_col = _pick_col(cols_map, ["siteid", "site", "sitecode", "sitecodeid", "site_name", "siteidnr",
+                                    "siteid5g", "siteidnr5g", "nrsiteid", "gnbsiteid", "gnb"])
+
+    if not (uf_col and municipio_col and (enb_col or site_col)):
+        return 0, f"{filename}: missing required columns (UF, MUNICIPIO, and eNB or SiteID)."
+
+    cell_col = _pick_col(cols_map, ["cell", "cellname", "nrcellcuid", "nrcellduid", "nrcellid",
+                                    "eutrancell", "eutrancellfdd", "eutrancelltdd"])
+    tipo_col = _pick_col(cols_map, ["tipo", "type", "rat", "technology", "tech"])
+    tech_col = _pick_col(cols_map, ["tech", "technology", "rat"])
+    gnbid_col = _pick_col(cols_map, ["gnbid", "gnb_id"])
+    nrcell_col = _pick_col(cols_map, ["nrcellcuid", "nrcellduid", "nrcellid"])
+    nrfreq_col = _pick_col(cols_map, ["nrfrequency", "ssbfrequency"])
+    nrpci_col = _pick_col(cols_map, ["nrpci"])
+
+    id_col = enb_col or site_col
+    tech_cols = {
+        "tech": tech_col, "cell": cell_col, "tipo": tipo_col, "site": id_col,
+        "gnbid": gnbid_col, "nrcell": nrcell_col, "nrfrequency": nrfreq_col,
+        "nrpci": nrpci_col, "ssbfrequency": nrfreq_col,
+    }
+
+    added = 0
+    for _, rec in df.iterrows():
+        regional = str(rec.get(regional_col, "")).strip() if regional_col else ""
+        if not regional and cn_col:
+            regional = str(rec.get(cn_col, "")).strip()
+        uf = str(rec.get(uf_col, "")).strip().upper()
+        municipio = str(rec.get(municipio_col, "")).strip()
+        site_id = str(rec.get(id_col, "")).strip()
+        if not site_id:
+            continue
+        tech = _infer_tech_from_row(rec, filename, tech_cols)
+        key = (regional, uf, municipio, site_id, tech)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows_out.append({"Regional": regional, "UF": uf, "MUNICIPIO": municipio, "SiteID": site_id, "Tech": tech})
+        added += 1
+    return added, None
+
+
+def _save_site_list_txt(path, rows):
+    """Write rows to a TSV sites_list.txt (UTF-8 with BOM)."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        f.write("Regional\tUF\tMUNICIPIO\tSiteID\tTech\n")
+        for r in rows:
+            regional = str(r.get("Regional", "")).strip()
+            uf = str(r.get("UF", "")).strip().upper()
+            municipio = str(r.get("MUNICIPIO", "")).strip()
+            site_id = str(r.get("SiteID", "")).strip()
+            tech = str(r.get("Tech", "LTE")).strip().upper() or "LTE"
+            f.write("\t".join([regional, uf, municipio, site_id, tech]) + "\n")
+
+
+def _auto_build_site_list_from_dir(base_dir):
+    """
+    Scan base_dir for xlsx/csv files, build and return site rows.
+    Returns (rows, sources, warnings).
+    """
+    table_exts = {".xlsx", ".xls", ".csv"}
+    try:
+        candidates = [
+            os.path.join(base_dir, fn)
+            for fn in os.listdir(base_dir)
+            if os.path.splitext(fn)[1].lower() in table_exts
+        ]
+    except OSError:
+        return [], [], [f"Cannot list directory: {base_dir}"]
+
+    rows, seen, sources, warnings = [], set(), [], []
+    for fpath in sorted(candidates):
+        fname = os.path.basename(fpath)
+        try:
+            df = _read_disk_table(fpath)
+        except Exception as e:
+            warnings.append(f"{fname}: skipped ({e})")
+            continue
+        added, warn = _extract_site_rows(df, fname, rows, seen)
+        if warn:
+            warnings.append(warn)
+        else:
+            sources.append(f"{fname}: {added} site(s)")
+    return rows, sources, warnings
 
 
 def _infer_tech_from_row(rec, filename, cols):
@@ -300,11 +431,7 @@ def api_update_site_list():
     if not files:
         return jsonify({"ok": False, "error": "No files uploaded."}), 400
 
-    rows = []
-    seen = set()
-    sources = []
-    warnings = []
-
+    rows, seen, sources, warnings = [], set(), [], []
     for f in files:
         filename = os.path.basename(f.filename or "")
         if not filename:
@@ -314,92 +441,13 @@ def api_update_site_list():
         except Exception as e:
             warnings.append(f"{filename}: skipped ({e})")
             continue
+        added, warn = _extract_site_rows(df, filename, rows, seen)
+        if warn:
+            warnings.append(warn)
+        else:
+            sources.append(f"{filename}: {added} site(s)")
 
-        cols_map = {_normalize_col_name(c): c for c in df.columns}
-        regional_col = _pick_col(cols_map, [
-            "regional", "regiao", "region", "regionalname", "area", "macroregiao"
-        ])
-        cn_col = _pick_col(cols_map, ["cn", "ddd", "market", "mercado"])
-        uf_col = _pick_col(cols_map, [
-            "uf", "estado", "state", "siglauf"
-        ])
-        municipio_col = _pick_col(cols_map, [
-            "municipio", "municpio", "cidade", "city", "municipality", "mun", "cluster"
-        ])
-        enb_col = _pick_col(cols_map, [
-            "enb", "enodeb", "enodebid", "idenb", "enodebname", "siteenb"
-        ])
-        site_col = _pick_col(cols_map, [
-            "siteid", "site", "sitecode", "sitecodeid", "site_name", "siteidnr",
-            "siteid5g", "siteidnr5g", "nrsiteid", "gnbsiteid", "gnb"
-        ])
-
-        if not (uf_col and municipio_col and (enb_col or site_col)):
-            warnings.append(
-                f"{filename}: missing required columns (UF, MUNICIPIO, and eNB or SiteID)."
-            )
-            continue
-
-        cell_col = _pick_col(cols_map, [
-            "cell", "cellname", "nrcellcuid", "nrcellduid", "nrcellid", "eutrancell", "eutrancellfdd", "eutrancelltdd"
-        ])
-        tipo_col = _pick_col(cols_map, ["tipo", "type", "rat", "technology", "tech"])
-        tech_col = _pick_col(cols_map, ["tech", "technology", "rat"])
-        gnbid_col = _pick_col(cols_map, ["gnbid", "gnb_id"])
-        nrcell_col = _pick_col(cols_map, ["nrcellcuid", "nrcellduid", "nrcellid"])
-        nrfreq_col = _pick_col(cols_map, ["nrfrequency", "ssbfrequency"])
-        nrpci_col = _pick_col(cols_map, ["nrpci"])
-
-        id_col = enb_col or site_col
-        tech_cols = {
-            "tech": tech_col,
-            "cell": cell_col,
-            "tipo": tipo_col,
-            "site": id_col,
-            "gnbid": gnbid_col,
-            "nrcell": nrcell_col,
-            "nrfrequency": nrfreq_col,
-            "nrpci": nrpci_col,
-            "ssbfrequency": nrfreq_col,
-        }
-        added = 0
-        total = 0
-        for _, rec in df.iterrows():
-            total += 1
-            regional = str(rec.get(regional_col, "")).strip() if regional_col else ""
-            if not regional and cn_col:
-                regional = str(rec.get(cn_col, "")).strip()
-            uf = str(rec.get(uf_col, "")).strip().upper()
-            municipio = str(rec.get(municipio_col, "")).strip()
-            site_id = str(rec.get(id_col, "")).strip()
-            if not site_id:
-                continue
-            tech = _infer_tech_from_row(rec, filename, tech_cols)
-            key = (regional, uf, municipio, site_id, tech)
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append(
-                {
-                    "Regional": regional,
-                    "UF": uf,
-                    "MUNICIPIO": municipio,
-                    "SiteID": site_id,
-                    "Tech": tech,
-                }
-            )
-            added += 1
-        sources.append(f"{filename}: {added} site(s) from {total} row(s)")
-
-    return jsonify(
-        {
-            "ok": True,
-            "rows": rows,
-            "count": len(rows),
-            "sources": sources,
-            "warnings": warnings,
-        }
-    )
+    return jsonify({"ok": True, "rows": rows, "count": len(rows), "sources": sources, "warnings": warnings})
 
 @app.route("/api/save-site-list", methods=["POST", "OPTIONS"])
 def api_save_site_list():
@@ -438,6 +486,30 @@ def api_save_site_list():
     return jsonify({"ok": True, "path": out_path, "count": len(rows)})
 
 
+def _read_site_list_txt(path):
+    """Read a TSV sites_list.txt and return list of row dicts."""
+    rows = []
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        lines = [ln.rstrip("\n\r") for ln in f if ln.strip()]
+    if len(lines) < 2:
+        return rows
+    header = [h.strip() for h in lines[0].split("\t")]
+    idx = {h: i for i, h in enumerate(header)}
+    for ln in lines[1:]:
+        cells = ln.split("\t")
+        def cell(name, _cells=cells, _idx=idx):
+            i = _idx.get(name)
+            return _cells[i].strip() if i is not None and i < len(_cells) else ""
+        rows.append({
+            "Regional": cell("Regional"),
+            "UF": cell("UF").upper(),
+            "MUNICIPIO": cell("MUNICIPIO"),
+            "SiteID": cell("SiteID"),
+            "Tech": cell("Tech").upper() or "LTE",
+        })
+    return rows
+
+
 @app.route("/api/load-site-list", methods=["POST", "OPTIONS"])
 def api_load_site_list():
     if request.method == "OPTIONS":
@@ -449,34 +521,36 @@ def api_load_site_list():
         return jsonify({"ok": False, "error": "base_dir is required."}), 400
 
     path = os.path.join(base_dir, "sites_list.txt")
-    if not os.path.isfile(path):
-        return jsonify({"ok": False, "error": f"sites_list.txt not found in {base_dir}"}), 404
 
+    # Try reading existing sites_list.txt
     rows = []
-    try:
-        with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
-            lines = [ln.rstrip("\n\r") for ln in f if ln.strip()]
-        if len(lines) < 2:
-            return jsonify({"ok": True, "path": path, "rows": [], "count": 0})
+    if os.path.isfile(path):
+        try:
+            rows = _read_site_list_txt(path)
+        except OSError as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
-        header = [h.strip() for h in lines[0].split("\t")]
-        idx = {h: i for i, h in enumerate(header)}
-        for ln in lines[1:]:
-            cells = ln.split("\t")
-            def cell(name):
-                i = idx.get(name)
-                return cells[i].strip() if i is not None and i < len(cells) else ""
-            rows.append(
-                {
-                    "Regional": cell("Regional"),
-                    "UF": cell("UF").upper(),
-                    "MUNICIPIO": cell("MUNICIPIO"),
-                    "SiteID": cell("SiteID"),
-                    "Tech": cell("Tech").upper() or "LTE",
-                }
-            )
-    except OSError as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    # If no real data found, try auto-building from xlsx/csv files in the same dir
+    if len(rows) < 5:
+        try:
+            built_rows, sources, warnings = _auto_build_site_list_from_dir(base_dir)
+        except Exception:
+            built_rows = []
+        if built_rows:
+            try:
+                _save_site_list_txt(path, built_rows)
+            except OSError:
+                pass
+            return jsonify({
+                "ok": True,
+                "path": path,
+                "rows": built_rows,
+                "count": len(built_rows),
+                "auto_built": True,
+            })
+        # No Excel files found either → return 404
+        if not rows:
+            return jsonify({"ok": False, "error": f"sites_list.txt not found in {base_dir}"}), 404
 
     return jsonify({"ok": True, "path": path, "rows": rows, "count": len(rows)})
 
