@@ -952,7 +952,7 @@ function renderCustomMos() {
     <div class="d-flex align-items-center gap-2 py-1" style="font-size: 0.82rem;">
       <i class="bi bi-plus-circle-fill text-primary" style="font-size: 0.7rem;"></i>
       <code class="text-dark">${mo}</code>
-      <button class="btn btn-link btn-sm text-danger p-0 ms-auto" type="button" data-remove-mo="${i}" title="Remover">
+      <button class="btn btn-link btn-sm text-danger p-0 ms-auto" type="button" data-remove-mo="${i}" title="Remove">
         <i class="bi bi-x-lg" style="font-size: 0.7rem;"></i>
       </button>
     </div>

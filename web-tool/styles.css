@@ -213,7 +213,7 @@ body {
 }
 
 .enms-list:empty::after {
-  content: 'Nenhum ENM adicionado. Clique em "Adicionar ENM" para começar.';
+  content: 'No ENM added. Click "Add ENM" to get started.';
   display: block;
   padding: 16px;
   text-align: center;
