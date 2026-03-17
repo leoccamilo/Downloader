@@ -94,6 +94,11 @@
                       <tbody id="enm-rows"></tbody>
                     </table>
                   </div>
+                  <div id="add-enm-container">
+                    <button id="btn-add-enm" class="btn btn-outline-secondary btn-sm mt-1" type="button" onclick="showAddEnmForm()" title="Add a custom ENM">
+                      <i class="bi bi-plus-circle"></i> Add ENM
+                    </button>
+                  </div>
                   <div class="mb-0 mt-2">
                     <label class="form-label fw-bold small">Output Directory (shared)</label>
                     <div class="input-group input-group-sm">
@@ -269,8 +274,8 @@
                     <button class="btn btn-success btn-sm" id="btn-execute-dump">
                       <i class="bi bi-play-fill"></i> Execute Dump
                     </button>
-                    <button class="btn btn-outline-primary btn-sm" id="btn-export-script" title="Export JSON to run with dump_multiple_enms.py">
-                      <i class="bi bi-download"></i> Export for script
+                    <button class="btn btn-outline-secondary btn-sm" id="btn-export-site-list" title="Export current site list to a text file">
+                      <i class="bi bi-file-earmark-text"></i> Export Site List
                     </button>
                   </div>
                   <p class="form-text small mt-2 mb-0">Generate command, then click <strong>Execute Dump</strong> to run on each selected ENM. Logs appear in the panel below. "Export for script" is only if you want to run <code>run_dump.bat &lt;config.json&gt;</code> in a terminal.</p>
@@ -420,6 +425,69 @@
         <span id="status-text">Ready</span>
       </div>
       <span id="status-timestamp">--</span>
+    </div>
+  </div>
+
+  <!-- Directory Browser Modal -->
+  <div class="modal fade" id="dirBrowserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable" style="max-width:520px">
+      <div class="modal-content">
+        <div class="modal-header py-2 bg-dark text-white">
+          <h6 class="modal-title mb-0"><i class="bi bi-folder2-open"></i> Select Folder</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <!-- Breadcrumb / current path -->
+          <div class="px-3 pt-2 pb-1 border-bottom bg-light">
+            <div class="d-flex align-items-center gap-1 flex-wrap" id="dir-browser-breadcrumb" style="min-height:28px;font-size:0.82rem;"></div>
+          </div>
+          <!-- Directory listing -->
+          <div id="dir-browser-list" style="min-height:120px;max-height:460px;overflow-y:auto;"></div>
+          <!-- Manual path input -->
+          <div class="px-3 py-2 border-top bg-light">
+            <label class="form-label small mb-1 fw-bold">Path</label>
+            <input type="text" class="form-control form-control-sm font-monospace" id="dir-browser-path-input" placeholder="Type or paste a path...">
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-dir-browser-select">
+            <i class="bi bi-check-lg"></i> Select this folder
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Site List Modal -->
+  <div class="modal fade" id="exportSiteListModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title"><i class="bi bi-file-earmark-text"></i> Export Site List</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1">Directory</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control font-monospace" id="export-sl-dir" placeholder="C:/path/to/folder">
+              <button class="btn btn-outline-secondary" type="button" id="btn-browse-export-sl-dir" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1">Filename</label>
+            <input type="text" class="form-control form-control-sm" id="export-sl-filename" value="sites_list.txt">
+          </div>
+          <p class="small text-muted mb-0" id="export-sl-count"></p>
+        </div>
+        <div class="modal-footer py-1">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-export-sl-confirm">
+            <i class="bi bi-download"></i> Export
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -5,6 +5,7 @@
  */
 
 const STORAGE_PROFILES = 'downloader_enm_profiles';
+const STORAGE_CUSTOM_ENMS = 'downloader_custom_enms';
 const STORAGE_LAST_OUTPUT_DIR = 'downloader_last_output_dir';
 const STORAGE_SITE_LIST_SAVE_DIR = 'downloader_site_list_save_dir';
 const STORAGE_PARSER_INPUT = 'downloader_parser_input_dir';
@@ -13,6 +14,8 @@ const STORAGE_PARSER_CELLREF = 'downloader_parser_cellref_dir';
 const STORAGE_PARSER_ENRICHED = 'downloader_parser_enriched_dir';
 const STORAGE_FILE_VIEWER_OUTPUT = 'downloader_file_viewer_output_dir';
 const STORAGE_CUSTOMIZE_TXTS = 'downloader_customize_txts';
+const STORAGE_EXPORT_SL_DIR  = 'downloader_export_sl_dir';
+const STORAGE_EXPORT_SL_NAME = 'downloader_export_sl_name';
 
 /** Loaded site list (from sites_list.txt or built from folder). Array of { Regional, UF, MUNICIPIO, SiteID, Tech } */
 let siteListData = [];
@@ -29,6 +32,28 @@ const ENM_SERVERS = {
 
 /** ENM order in table (short name for job: ENMBARA -> BARA) */
 const ENM_IDS = ['ENMBARA', 'ENMBARB', 'ENMCTPB', 'ENMCTPA'];
+
+/** Base ENMs that ship with the tool (cannot be removed). */
+const BASE_ENMS = [
+  { id: 'ENMBARA', url: 'https://enmbara.ran.redestlf.br/' },
+  { id: 'ENMBARB', url: 'https://enmbarb.ran.redestlf.br/' },
+  { id: 'ENMCTPB', url: 'https://enmctpb.ran.redestlf.br/' },
+  { id: 'ENMCTPA', url: 'https://enmctpa.ran.redestlf.br/' },
+];
+
+function loadCustomEnms() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_CUSTOM_ENMS)) || []; }
+  catch { return []; }
+}
+
+function saveCustomEnms(arr) {
+  localStorage.setItem(STORAGE_CUSTOM_ENMS, JSON.stringify(arr));
+}
+
+/** Returns the full ENM list (base + custom). Source of truth for all ENM operations. */
+function getEnmList() {
+  return [...BASE_ENMS, ...loadCustomEnms()];
+}
 
 function enmShortName(id) {
   return id.replace(/^ENM/, '');
@@ -690,9 +715,15 @@ function updateMunicipalityDatalist() {
 function renderEnmRows() {
   const tbody = document.getElementById('enm-rows');
   if (!tbody) return;
-  tbody.innerHTML = ENM_IDS.map(id => `
+  const baseIds = new Set(BASE_ENMS.map(e => e.id));
+  tbody.innerHTML = getEnmList().map(({ id }) => {
+    const isCustom = !baseIds.has(id);
+    const removeBtn = isCustom
+      ? `<button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Remove ENM" onclick="removeCustomEnm('${id}')"><i class="bi bi-x-circle"></i></button>`
+      : '';
+    return `
     <tr>
-      <td class="align-middle"><span class="fw-bold">${id}</span></td>
+      <td class="align-middle"><span class="fw-bold">${id}</span>${removeBtn}</td>
       <td class="text-center align-middle">
         <input class="form-check-input" type="checkbox" id="enm-include-${id}" data-enm-id="${id}" title="Include this ENM in dump">
       </td>
@@ -702,25 +733,69 @@ function renderEnmRows() {
       <td class="align-middle">
         <input type="password" class="form-control form-control-sm" id="enm-password-${id}" placeholder="Password">
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
+}
+
+function removeCustomEnm(id) {
+  const custom = loadCustomEnms().filter(e => e.id !== id);
+  saveCustomEnms(custom);
+  renderEnmRows();
+}
+
+function addCustomEnm(id, url) {
+  id = id.trim().toUpperCase();
+  url = url.trim();
+  if (!id) { alert('ENM ID is required.'); return false; }
+  if (!url) { alert('URL is required.'); return false; }
+  const all = getEnmList();
+  if (all.some(e => e.id === id)) { alert(`ENM "${id}" already exists.`); return false; }
+  const custom = loadCustomEnms();
+  custom.push({ id, url });
+  saveCustomEnms(custom);
+  renderEnmRows();
+  return true;
+}
+
+function showAddEnmForm() {
+  const existing = document.getElementById('add-enm-form');
+  if (existing) { existing.remove(); return; }
+  const container = document.getElementById('add-enm-container');
+  if (!container) return;
+  const form = document.createElement('div');
+  form.id = 'add-enm-form';
+  form.className = 'mt-2 p-2 border rounded bg-light';
+  form.innerHTML = `
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">ENM ID</label>
+        <input type="text" id="new-enm-id" class="form-control form-control-sm" placeholder="ENMSP01" style="width:110px"
+               oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="col">
+        <label class="form-label small mb-1">URL</label>
+        <input type="text" id="new-enm-url" class="form-control form-control-sm" placeholder="https://enmsp01.ran.empresa.br/">
+      </div>
+      <div class="col-auto d-flex gap-1">
+        <button class="btn btn-primary btn-sm" onclick="
+          if(addCustomEnm(document.getElementById('new-enm-id').value, document.getElementById('new-enm-url').value))
+            document.getElementById('add-enm-form').remove();">Add</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('add-enm-form').remove()">Cancel</button>
+      </div>
+    </div>`;
+  container.appendChild(form);
+  document.getElementById('new-enm-id').focus();
 }
 
 /** Retorna lista de ENMs selecionados para dump (incluir marcado e username preenchido). */
 function getSelectedEnms() {
   const list = [];
-  ENM_IDS.forEach(id => {
+  getEnmList().forEach(({ id, url }) => {
     const include = document.getElementById(`enm-include-${id}`);
     const username = (document.getElementById(`enm-username-${id}`) || {}).value.trim();
     const password = (document.getElementById(`enm-password-${id}`) || {}).value;
     if (include && include.checked && username) {
-      list.push({
-        id,
-        nameShort: enmShortName(id),
-        url: ENM_SERVERS[id],
-        username,
-        password
-      });
+      list.push({ id, nameShort: enmShortName(id), url, username, password });
     }
   });
   return list;
@@ -729,7 +804,7 @@ function getSelectedEnms() {
 /** All ENM form data (for saving in profile). */
 function getEnmFormData() {
   const enms = {};
-  ENM_IDS.forEach(id => {
+  getEnmList().forEach(({ id }) => {
     const u = document.getElementById(`enm-username-${id}`);
     const p = document.getElementById(`enm-password-${id}`);
     enms[id] = {
@@ -742,7 +817,7 @@ function getEnmFormData() {
 
 function setEnmFormData(enms) {
   if (!enms) return;
-  ENM_IDS.forEach(id => {
+  getEnmList().forEach(({ id }) => {
     const cred = enms[id];
     if (!cred) return;
     const u = document.getElementById(`enm-username-${id}`);
@@ -1008,6 +1083,58 @@ function copyEnmCommand() {
 }
 
 // ---------- Export JSON for Python script ----------
+function openExportSiteListModal() {
+  const sitesStr = getSitesString();
+  const ids = sitesStr ? sitesStr.split(';').filter(Boolean) : [];
+  if (!ids.length) {
+    showEnmResult('warning', 'No sites in scope. Configure scope and generate command before exporting.');
+    return;
+  }
+  const dirEl  = document.getElementById('export-sl-dir');
+  const nameEl = document.getElementById('export-sl-filename');
+  const countEl = document.getElementById('export-sl-count');
+  if (dirEl)  dirEl.value  = localStorage.getItem(STORAGE_EXPORT_SL_DIR)  || '';
+  if (nameEl) nameEl.value = localStorage.getItem(STORAGE_EXPORT_SL_NAME) || 'sites_list.txt';
+  if (countEl) countEl.textContent = `${ids.length} site(s) will be exported.`;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('exportSiteListModal')).show();
+}
+
+async function confirmExportSiteList() {
+  const dir  = (document.getElementById('export-sl-dir')  && document.getElementById('export-sl-dir').value  || '').trim();
+  const name = (document.getElementById('export-sl-filename') && document.getElementById('export-sl-filename').value || '').trim() || 'sites_list.txt';
+  if (!dir) { alert('Please enter a directory.'); return; }
+  const sitesStr = getSitesString();
+  const ids = sitesStr ? sitesStr.split(';').filter(Boolean) : [];
+  if (!ids.length) { alert('No sites to export.'); return; }
+  const filePath = dir.replace(/[/\\]+$/, '') + '/' + name;
+  const btnConfirm = document.getElementById('btn-export-sl-confirm');
+  const countEl = document.getElementById('export-sl-count');
+  try {
+    if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.innerHTML = '<i class="bi bi-hourglass-split"></i> Exporting...'; }
+    const resp = await fetch('/api/export-site-ids', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_path: filePath, ids })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      try { localStorage.setItem(STORAGE_EXPORT_SL_DIR, dir); localStorage.setItem(STORAGE_EXPORT_SL_NAME, name); } catch (_) {}
+      if (btnConfirm) { btnConfirm.innerHTML = '<i class="bi bi-check-lg"></i> Done!'; }
+      if (countEl) countEl.innerHTML = `<span class="text-success fw-bold">✓ ${data.count} sites exported to ${data.path}</span>`;
+      setTimeout(() => {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('exportSiteListModal')).hide();
+        if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i class="bi bi-download"></i> Export'; }
+      }, 1500);
+    } else {
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i class="bi bi-download"></i> Export'; }
+      alert(`Export failed: ${data.error}`);
+    }
+  } catch (e) {
+    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i class="bi bi-download"></i> Export'; }
+    alert(`Export failed: ${e.message}`);
+  }
+}
+
 function exportForScript() {
   if (!getSitesString()) {
     showEnmResult('warning', 'Select scope (UF, city, or site list) and generate command before export.');
@@ -1089,6 +1216,107 @@ function getPathFromFolderInput(inputEl) {
     return seg || '';
   }
   return '';
+}
+
+// ---------- Directory Browser Modal ----------
+let _dirBrowserResolve = null;
+let _dirBrowserCurrentPath = '';
+
+async function _dirBrowserLoad(path) {
+  const listEl = document.getElementById('dir-browser-list');
+  const bcEl = document.getElementById('dir-browser-breadcrumb');
+  const pathInput = document.getElementById('dir-browser-path-input');
+  listEl.innerHTML = '<div class="p-3 text-muted small"><i class="bi bi-hourglass-split"></i> Loading...</div>';
+  try {
+    const resp = await fetch('/api/list-dir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path || '' })
+    });
+    const data = await resp.json();
+    if (data.error) { listEl.innerHTML = `<div class="p-3 text-danger small">${data.error}</div>`; return; }
+    _dirBrowserCurrentPath = data.path || '';
+    if (pathInput) pathInput.value = _dirBrowserCurrentPath;
+    // Breadcrumb
+    if (bcEl) {
+      if (!_dirBrowserCurrentPath) {
+        bcEl.innerHTML = '<span class="text-muted">This PC</span>';
+      } else {
+        const parts = _dirBrowserCurrentPath.split('/').filter(Boolean);
+        let html = `<span class="dir-bc-item text-primary" style="cursor:pointer" data-path="" title="This PC"><i class="bi bi-pc-display-horizontal"></i></span>`;
+        let acc = '';
+        parts.forEach((p, i) => {
+          acc += (acc ? '/' : '') + p;
+          const isLast = i === parts.length - 1;
+          const cur = acc;
+          html += `<span class="text-muted mx-1">/</span>`;
+          html += isLast
+            ? `<span class="fw-bold">${p}</span>`
+            : `<span class="dir-bc-item text-primary" style="cursor:pointer" data-path="${cur}">${p}</span>`;
+        });
+        bcEl.innerHTML = html;
+        bcEl.querySelectorAll('.dir-bc-item').forEach(el => {
+          el.addEventListener('click', () => _dirBrowserLoad(el.dataset.path));
+        });
+      }
+    }
+    // List
+    let rows = '';
+    if (data.parent !== null && !data.is_drives) {
+      rows += `<div class="dir-item d-flex align-items-center px-3 py-2 border-bottom" style="cursor:pointer" data-path="${data.parent}">
+        <i class="bi bi-arrow-up text-secondary me-2"></i><span class="text-secondary small">..</span></div>`;
+    }
+    const items = data.items || [];
+    if (!items.length && !data.is_drives) {
+      rows += '<div class="p-3 text-muted small">Empty folder</div>';
+    } else {
+      items.forEach(item => {
+        const full = data.is_drives ? item : (data.path ? data.path + '/' + item : item);
+        const label = data.is_drives ? item : item;
+        rows += `<div class="dir-item d-flex align-items-center px-3 py-2 border-bottom" style="cursor:pointer" data-path="${full}">
+          <i class="bi bi-folder-fill text-warning me-2"></i><span class="small">${label}</span></div>`;
+      });
+    }
+    const countInfo = items.length ? `<div class="px-3 py-1 bg-light border-bottom text-muted small">${items.length} folder(s)</div>` : '';
+    listEl.innerHTML = countInfo + (rows || '<div class="p-3 text-muted small">No folders found</div>');
+    listEl.querySelectorAll('.dir-item').forEach(el => {
+      el.addEventListener('click', () => _dirBrowserLoad(el.dataset.path));
+      el.addEventListener('mouseenter', () => el.classList.add('bg-light'));
+      el.addEventListener('mouseleave', () => el.classList.remove('bg-light'));
+    });
+  } catch (e) {
+    listEl.innerHTML = `<div class="p-3 text-danger small">Error: ${e.message}</div>`;
+  }
+}
+
+/**
+ * Open the custom directory browser modal.
+ * @param {string} initialDir - Starting directory.
+ * @returns {Promise<string>} - Selected path, or empty string if cancelled.
+ */
+function browseFolder(initialDir) {
+  return new Promise(resolve => {
+    _dirBrowserResolve = resolve;
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('dirBrowserModal'));
+    _dirBrowserLoad(initialDir || '');
+    // Wire select button (reset listener each time)
+    const btnSelect = document.getElementById('btn-dir-browser-select');
+    const pathInput = document.getElementById('dir-browser-path-input');
+    btnSelect.onclick = () => {
+      const chosen = (pathInput && pathInput.value.trim()) || _dirBrowserCurrentPath;
+      modal.hide();
+      if (_dirBrowserResolve) { _dirBrowserResolve(chosen.replace(/\\/g, '/')); _dirBrowserResolve = null; }
+    };
+    // Allow typing a path and pressing Enter to navigate
+    if (pathInput) {
+      pathInput.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); _dirBrowserLoad(pathInput.value.trim()); }
+      };
+    }
+    document.getElementById('dirBrowserModal').addEventListener('hidden.bs.modal', () => {
+      if (_dirBrowserResolve) { _dirBrowserResolve(''); _dirBrowserResolve = null; }
+    }, { once: true });
+    modal.show();
+  });
 }
 
 /** Load saved path into input and save on change/blur so paths are remembered. */
@@ -1377,7 +1605,7 @@ async function runAll() {
   logEl.value += `ENMs: ${selected.map(e => e.id).join(', ')}\n`;
   logEl.value += `Output: ${outputDir}\n`;
   if (btnClose) btnClose.disabled = true;
-  if (btnCancel) btnCancel.disabled = false;
+  if (btnCancel) { btnCancel.disabled = false; btnCancel.innerHTML = '<i class="bi bi-stop-fill"></i> Cancel'; }
   if (btnRunAll) btnRunAll.disabled = true;
   if (statusEl) statusEl.textContent = 'Running...';
   modal.show();
@@ -1391,7 +1619,7 @@ async function runAll() {
       logEl.value += '\n--- CANCELLED BY USER ---\n';
       if (statusEl) statusEl.textContent = 'Cancelled.';
       if (btnClose) btnClose.disabled = false;
-      if (btnCancel) btnCancel.disabled = true;
+      if (btnCancel) { btnCancel.disabled = true; }
       if (btnRunAll) btnRunAll.disabled = false;
     };
   }
@@ -1427,8 +1655,12 @@ async function runAll() {
   } finally {
     _runAllAbort = null;
     if (btnClose) btnClose.disabled = false;
-    if (btnCancel) btnCancel.disabled = true;
     if (btnRunAll) btnRunAll.disabled = false;
+    if (btnCancel) {
+      btnCancel.disabled = false;
+      btnCancel.innerHTML = '<i class="bi bi-x-lg"></i> Close';
+      btnCancel.onclick = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('runAllModal')).hide();
+    }
   }
 }
 
@@ -1457,20 +1689,15 @@ function init() {
     folderPathEl.addEventListener('change', () => { tryAutoLoadSiteListFromBaseDir(true); });
     folderPathEl.addEventListener('blur', () => { tryAutoLoadSiteListFromBaseDir(true); });
   }
-  const folderPickerSiteListBase = document.getElementById('folder-picker-site-list-base');
-  if (folderPickerSiteListBase && folderPathEl) {
-    const btnBrowseSiteListBase = document.getElementById('btn-browse-site-list-base');
-    if (btnBrowseSiteListBase) {
-      btnBrowseSiteListBase.addEventListener('click', () => folderPickerSiteListBase.click());
-    }
-    folderPickerSiteListBase.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
+  const btnBrowseSiteListBase = document.getElementById('btn-browse-site-list-base');
+  if (btnBrowseSiteListBase && folderPathEl) {
+    btnBrowseSiteListBase.addEventListener('click', async () => {
+      const path = await browseFolder(folderPathEl.value);
       if (path) {
         folderPathEl.value = path;
         try { localStorage.setItem(STORAGE_SITE_LIST_SAVE_DIR, path); } catch (_) {}
         tryAutoLoadSiteListFromBaseDir(true);
       }
-      this.value = '';
     });
   }
   const folderInput = document.getElementById('site-list-folder-input');
@@ -1597,94 +1824,27 @@ function init() {
   const btnClearLogs = document.getElementById('btn-clear-logs');
   if (btnClearLogs) btnClearLogs.addEventListener('click', clearLogs);
 
-  // Folder picker: Output directory
-  const folderPickerOutput = document.getElementById('folder-picker-output');
-  const enmOutputDirEl = document.getElementById('enm-output-dir');
-  if (folderPickerOutput && enmOutputDirEl) {
-    document.getElementById('btn-browse-output').addEventListener('click', () => folderPickerOutput.click());
-    folderPickerOutput.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        enmOutputDirEl.value = path;
-        try { localStorage.setItem(STORAGE_LAST_OUTPUT_DIR, path); } catch (_) {}
-      }
-      this.value = '';
-    });
-  }
-
-  // Folder picker: Parser input directory
-  const folderPickerParserInput = document.getElementById('folder-picker-parser-input');
-  const parserInputDirEl = document.getElementById('parser-input-dir');
-  if (folderPickerParserInput && parserInputDirEl) {
-    document.getElementById('btn-browse-parser-input').addEventListener('click', () => folderPickerParserInput.click());
-    folderPickerParserInput.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        parserInputDirEl.value = path;
-        try { localStorage.setItem(STORAGE_PARSER_INPUT, path); } catch (_) {}
-      }
-      this.value = '';
-    });
-  }
-
-  // Folder picker: Parser output directory
-  const folderPickerParserOutput = document.getElementById('folder-picker-parser-output');
-  const parserOutputDirEl = document.getElementById('parser-output-dir');
-  if (folderPickerParserOutput && parserOutputDirEl) {
-    document.getElementById('btn-browse-parser-output').addEventListener('click', () => folderPickerParserOutput.click());
-    folderPickerParserOutput.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        parserOutputDirEl.value = path;
-        try { localStorage.setItem(STORAGE_PARSER_OUTPUT, path); } catch (_) {}
-      }
-      this.value = '';
-    });
-  }
-
-  // Folder picker: Parser cellref directory
-  const folderPickerParserCellref = document.getElementById('folder-picker-parser-cellref');
-  const parserCellrefDirEl = document.getElementById('parser-cellref-dir');
-  if (folderPickerParserCellref && parserCellrefDirEl) {
-    document.getElementById('btn-browse-parser-cellref').addEventListener('click', () => folderPickerParserCellref.click());
-    folderPickerParserCellref.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        parserCellrefDirEl.value = path;
-        try { localStorage.setItem(STORAGE_PARSER_CELLREF, path); } catch (_) {}
-      }
-      this.value = '';
-    });
-  }
-
-  // Folder picker: Parser enriched directory
-  const folderPickerParserEnriched = document.getElementById('folder-picker-parser-enriched');
-  const parserEnrichedDirEl = document.getElementById('parser-enriched-dir');
-  if (folderPickerParserEnriched && parserEnrichedDirEl) {
-    document.getElementById('btn-browse-parser-enriched').addEventListener('click', () => folderPickerParserEnriched.click());
-    folderPickerParserEnriched.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        parserEnrichedDirEl.value = path;
-        try { localStorage.setItem(STORAGE_PARSER_ENRICHED, path); } catch (_) {}
-      }
-      this.value = '';
-    });
-  }
-
-  // Folder picker: File Viewer output directory
-  const folderPickerFileViewerOutput = document.getElementById('folder-picker-file-viewer-output');
-  const fileViewerOutputDirEl = document.getElementById('file-viewer-output-dir');
-  if (folderPickerFileViewerOutput && fileViewerOutputDirEl) {
-    document.getElementById('btn-browse-file-viewer-output').addEventListener('click', () => folderPickerFileViewerOutput.click());
-    folderPickerFileViewerOutput.addEventListener('change', function () {
-      const path = getPathFromFolderInput(this);
-      if (path) {
-        fileViewerOutputDirEl.value = path;
-        try { localStorage.setItem(STORAGE_FILE_VIEWER_OUTPUT, path); } catch (_) {}
-      }
-      this.value = '';
-    });
+  // Folder pickers: all use the native OS dialog via /api/browse-folder
+  const folderBrowseMap = [
+    { btnId: 'btn-browse-output',            inputId: 'enm-output-dir',          storageKey: STORAGE_LAST_OUTPUT_DIR },
+    { btnId: 'btn-browse-parser-input',      inputId: 'parser-input-dir',         storageKey: STORAGE_PARSER_INPUT },
+    { btnId: 'btn-browse-parser-output',     inputId: 'parser-output-dir',        storageKey: STORAGE_PARSER_OUTPUT },
+    { btnId: 'btn-browse-parser-cellref',    inputId: 'parser-cellref-dir',       storageKey: STORAGE_PARSER_CELLREF },
+    { btnId: 'btn-browse-parser-enriched',   inputId: 'parser-enriched-dir',      storageKey: STORAGE_PARSER_ENRICHED },
+    { btnId: 'btn-browse-file-viewer-output',inputId: 'file-viewer-output-dir',   storageKey: STORAGE_FILE_VIEWER_OUTPUT },
+  ];
+  for (const { btnId, inputId, storageKey } of folderBrowseMap) {
+    const btn = document.getElementById(btnId);
+    const inp = document.getElementById(inputId);
+    if (btn && inp) {
+      btn.addEventListener('click', async () => {
+        const path = await browseFolder(inp.value);
+        if (path) {
+          inp.value = path;
+          try { localStorage.setItem(storageKey, path); } catch (_) {}
+        }
+      });
+    }
   }
 
   // "Enrich Files" checkbox: show/hide enrichment options, persist state
@@ -1708,8 +1868,18 @@ function init() {
   const btnRunParserCancel = document.getElementById('btn-run-parser-cancel');
   if (btnRunParserCancel) btnRunParserCancel.addEventListener('click', cancelParserPipeline);
 
-  const btnExport = document.getElementById('btn-export-script');
-  if (btnExport) btnExport.addEventListener('click', exportForScript);
+  const btnExportSL = document.getElementById('btn-export-site-list');
+  if (btnExportSL) btnExportSL.addEventListener('click', openExportSiteListModal);
+  const btnExportSLConfirm = document.getElementById('btn-export-sl-confirm');
+  if (btnExportSLConfirm) btnExportSLConfirm.addEventListener('click', confirmExportSiteList);
+  const btnBrowseExportSL = document.getElementById('btn-browse-export-sl-dir');
+  if (btnBrowseExportSL) {
+    btnBrowseExportSL.addEventListener('click', async () => {
+      const inp = document.getElementById('export-sl-dir');
+      const path = await browseFolder(inp && inp.value || '');
+      if (path && inp) inp.value = path;
+    });
+  }
 
   // Run All button
   const btnRunAll = document.getElementById('btn-run-all');
@@ -1722,6 +1892,9 @@ function init() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Shut down the backend when the browser page/tab is closed
+// Signal the backend to shut down when the page unloads.
+// The server uses a 3-second delayed shutdown that is automatically cancelled
+// if any request arrives within that window (e.g. on page refresh).
 window.addEventListener('beforeunload', function () {
   navigator.sendBeacon('http://127.0.0.1:8765/api/shutdown');
 });

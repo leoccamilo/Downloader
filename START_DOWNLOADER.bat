@@ -36,13 +36,6 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8765" ^| findstr "LISTENING
 timeout /t 1 /nobreak >nul
 
 echo Starting Downloader and opening in browser...
-start /b "" python server_downloader.py
+start /b "" venv\Scripts\pythonw.exe server_downloader.py
 timeout /t 2 /nobreak >nul
 start "" "http://127.0.0.1:8765"
-
-echo.
-echo In the tool: choose ENM(s), user and password, set scope, click Generate Command, then Execute Dump. Logs appear in the Logs panel below.
-echo.
-echo Tip: Use START_DOWNLOADER_HIDDEN.vbs next time to run without this window.
-echo.
-pause

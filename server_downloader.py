@@ -894,16 +894,98 @@ def api_run_parser_pipeline():
     )
 
 
+@app.route("/api/debug-routes")
+def api_debug_routes():
+    rules = [{"rule": r.rule, "methods": sorted(r.methods)} for r in app.url_map.iter_rules()]
+    return jsonify(sorted(rules, key=lambda x: x["rule"]))
+
+
+@app.route("/api/export-site-ids", methods=["POST", "OPTIONS"])
+def api_export_site_ids():
+    """Save a plain-text site ID list (one per line) to the requested file path."""
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(force=True, silent=True) or {}
+    file_path = (data.get("file_path") or "").strip().replace("/", os.sep)
+    ids = data.get("ids", [])
+    if not file_path:
+        return jsonify({"ok": False, "error": "file_path is required."}), 400
+    if not isinstance(ids, list):
+        return jsonify({"ok": False, "error": "ids must be a list."}), 400
+    try:
+        parent = os.path.dirname(file_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(ids))
+        return jsonify({"ok": True, "path": file_path, "count": len(ids)})
+    except OSError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/list-dir", methods=["POST", "OPTIONS"])
+def api_list_dir():
+    """List subdirectories of a given path (for the custom folder browser modal)."""
+    if request.method == "OPTIONS":
+        return "", 204
+    import string as _string
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("path") or "").strip().replace("/", os.sep).rstrip(os.sep)
+    # Root request → return available drives
+    if not raw:
+        drives = [d + ":/" for d in _string.ascii_uppercase if os.path.exists(d + ":/")]
+        return jsonify({"path": "", "items": drives, "parent": None, "is_drives": True})
+    if not os.path.isdir(raw):
+        return jsonify({"error": "Not a directory"}), 400
+    try:
+        all_entries = os.listdir(raw)
+    except PermissionError:
+        return jsonify({"error": "Permission denied"}), 403
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+    items = []
+    for d in all_entries:
+        if d.startswith("."):
+            continue
+        try:
+            if os.path.isdir(os.path.join(raw, d)):
+                items.append(d)
+        except OSError:
+            continue
+    items.sort(key=str.lower)
+    norm = raw.replace("\\", "/")
+    parent_raw = os.path.dirname(raw)
+    parent = parent_raw.replace("\\", "/") if parent_raw != raw else None
+    return jsonify({"path": norm, "items": items, "parent": parent, "is_drives": False})
+
+
+_shutdown_timer = None
+
 @app.route("/api/shutdown", methods=["POST", "GET"])
 def api_shutdown():
-    """Shut down the server (called by the browser page on close)."""
+    """Schedule a delayed shutdown. Cancelled if any request arrives within 3s (e.g. page refresh)."""
     import threading
+    global _shutdown_timer
+    if _shutdown_timer and _shutdown_timer.is_alive():
+        _shutdown_timer.cancel()
     def _exit():
         import time
-        time.sleep(0.5)
+        time.sleep(3)
         os._exit(0)
-    threading.Thread(target=_exit, daemon=True).start()
+    _shutdown_timer = threading.Timer(3, os._exit, args=(0,))
+    _shutdown_timer.daemon = True
+    _shutdown_timer.start()
     return "OK", 200
+
+
+@app.before_request
+def _cancel_shutdown():
+    global _shutdown_timer
+    if _shutdown_timer and _shutdown_timer.is_alive():
+        path = request.path
+        if path != "/api/shutdown":
+            _shutdown_timer.cancel()
+            _shutdown_timer = None
 
 
 if __name__ == "__main__":
