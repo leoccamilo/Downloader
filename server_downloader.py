@@ -43,9 +43,7 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_TOOL_DIR = os.path.join(SCRIPT_DIR, "web-tool")
 DUMP_SCRIPT = os.path.join(SCRIPT_DIR, "dump_multiple_enms.py")
-PARQUET_TO_TXT_SCRIPT = os.path.join(SCRIPT_DIR, "parquet_to_txt.py")
-XML_TO_PARQUET_SCRIPT = os.path.join(SCRIPT_DIR, "xml_to_parquet.py")
-EXTRACT_DUMP_SCRIPT = os.path.join(SCRIPT_DIR, "extract_dump.py")
+XML_TO_TXT_SCRIPT = os.path.join(SCRIPT_DIR, "xml_to_txt.py")
 POST_PROCESS_4_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_4_camilo.py")
 POST_PROCESS_5_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_5_tdd.py")
 POST_PROCESS_6_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_6_5g.py")
@@ -555,134 +553,6 @@ def api_load_site_list():
     return jsonify({"ok": True, "path": path, "rows": rows, "count": len(rows)})
 
 
-def stream_run_parquet_to_txt(input_dir, output_dir):
-    """Run parquet_to_txt.py with input_dir and output_dir; yield stdout line by line."""
-    if not os.path.isfile(PARQUET_TO_TXT_SCRIPT):
-        yield "Error: parquet_to_txt.py not found.\n"
-        return
-    python_exe = get_python_for_dump()
-    args = [python_exe, PARQUET_TO_TXT_SCRIPT, input_dir, output_dir]
-    proc = subprocess.Popen(
-        args,
-        cwd=SCRIPT_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-        creationflags=_NO_WINDOW,
-    )
-    for line in proc.stdout:
-        yield line if line.endswith("\n") else line + "\n"
-    proc.wait()
-    if proc.returncode != 0:
-        yield f"\nProcess exited with code {proc.returncode}\n"
-
-
-def stream_run_xml_to_parquet(input_dir, output_dir):
-    """Run xml_to_parquet.py with input_dir and output_dir; yield stdout line by line."""
-    if not os.path.isfile(XML_TO_PARQUET_SCRIPT):
-        yield "Error: xml_to_parquet.py not found.\n"
-        return
-    python_exe = get_python_for_dump()
-    out = output_dir if output_dir else input_dir
-    args = [python_exe, XML_TO_PARQUET_SCRIPT, input_dir, out]
-    proc = subprocess.Popen(
-        args,
-        cwd=SCRIPT_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-        creationflags=_NO_WINDOW,
-    )
-    for line in proc.stdout:
-        yield line if line.endswith("\n") else line + "\n"
-    proc.wait()
-    if proc.returncode != 0:
-        yield f"\nProcess exited with code {proc.returncode}\n"
-
-
-@app.route("/api/run-xml-to-parquet", methods=["POST", "OPTIONS"])
-def api_run_xml_to_parquet():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(force=True, silent=True) or {}
-    input_dir = (data.get("input_dir") or "").strip().replace("/", os.sep)
-    output_dir = (data.get("output_dir") or "").strip().replace("/", os.sep)
-    if not input_dir:
-        return Response("input_dir required\n", status=400, mimetype="text/plain")
-    return Response(
-        stream_run_xml_to_parquet(input_dir, output_dir or input_dir),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
-
-
-def stream_run_extract_dump(input_dir, output_dir):
-    """Run extract_dump.py with input_dir and optional output_dir; yield stdout line by line."""
-    if not os.path.isfile(EXTRACT_DUMP_SCRIPT):
-        yield "Error: extract_dump.py not found.\n"
-        return
-    python_exe = get_python_for_dump()
-    args = [python_exe, EXTRACT_DUMP_SCRIPT, input_dir]
-    if output_dir:
-        args.append(output_dir)
-    proc = subprocess.Popen(
-        args,
-        cwd=SCRIPT_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-        creationflags=_NO_WINDOW,
-    )
-    for line in proc.stdout:
-        yield line if line.endswith("\n") else line + "\n"
-    proc.wait()
-    if proc.returncode != 0:
-        yield f"\nProcess exited with code {proc.returncode}\n"
-
-
-@app.route("/api/run-extract-dump", methods=["POST", "OPTIONS"])
-def api_run_extract_dump():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(force=True, silent=True) or {}
-    input_dir = (data.get("input_dir") or "").strip().replace("/", os.sep)
-    output_dir = (data.get("output_dir") or "").strip().replace("/", os.sep)
-    if not input_dir:
-        return Response("input_dir required\n", status=400, mimetype="text/plain")
-    return Response(
-        stream_run_extract_dump(input_dir, output_dir or ""),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
-
-
-@app.route("/api/run-parquet-to-txt", methods=["POST", "OPTIONS"])
-def api_run_parquet_to_txt():
-    if request.method == "OPTIONS":
-        return "", 204
-    data = request.get_json(force=True, silent=True) or {}
-    input_dir = (data.get("input_dir") or "").strip().replace("/", os.sep)
-    output_dir = (data.get("output_dir") or "").strip().replace("/", os.sep)
-    if not input_dir:
-        return Response("input_dir required\n", status=400, mimetype="text/plain")
-    if not output_dir:
-        output_dir = input_dir
-    return Response(
-        stream_run_parquet_to_txt(input_dir, output_dir),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
-
-
 def _stream_run_script(python_exe, script_path, args_list):
     """Run a Python script with args; yield stdout line by line."""
     if not os.path.isfile(script_path):
@@ -783,58 +653,67 @@ def _run_step(python_exe, script, args):
     return lines, proc.returncode or 0
 
 
-def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir):
-    """Full pipeline: extract ZIP -> XML->Parquet -> Parquet->TXT -> (optional) enrich 4/5/6."""
+def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files=None):
+    """Pipeline: ZIP/XML -> one TXT per MO -> (optional) enrich 4/5/6.
+
+    Input is either a list of files (.zip/.xml/.xml.gz) or a folder containing them.
+    ZIPs are read in place by xml_to_txt.py — no extraction step.
+    """
     python_exe = get_python_for_dump()
-    src_dir = input_dir
     txt_dir = output_dir or input_dir
     enr_dir = enriched_dir or txt_dir
+    total_steps = 4 if customize_txts else 1
 
-    yield f"Input:    {src_dir}\n"
+    if input_files:
+        yield f"Input:    {len(input_files)} file(s)\n"
+        for f in input_files:
+            yield f"          {f}\n"
+    else:
+        yield f"Input:    {input_dir}\n"
     yield f"Output:   {txt_dir}\n"
     if customize_txts:
         yield f"Enriched: {enr_dir}\n"
     yield "\n"
 
-    # Step 1: Extract ZIPs (XMLs stay alongside ZIPs in src_dir)
     yield "=" * 50 + "\n"
-    yield "STEP 1/3: Extracting ZIP files...\n"
+    yield f"STEP 1/{total_steps}: Parsing ZIP/XML to TXT...\n"
     yield "=" * 50 + "\n"
-    for line in _stream_run_script(python_exe, EXTRACT_DUMP_SCRIPT, [EXTRACT_DUMP_SCRIPT, src_dir, src_dir]):
-        yield line
-
-    # Step 2: XML -> Parquet (read XMLs from src_dir, write parquets to txt_dir)
-    yield "\n" + "=" * 50 + "\n"
-    yield "STEP 2/3: Parsing XML to Parquet...\n"
-    yield "=" * 50 + "\n"
-    for line in _stream_run_script(python_exe, XML_TO_PARQUET_SCRIPT, [XML_TO_PARQUET_SCRIPT, src_dir, txt_dir]):
-        yield line
-
-    # Step 3: Parquet -> TXT (read/write in txt_dir, clean up parquets)
-    yield "\n" + "=" * 50 + "\n"
-    yield "STEP 3/3: Parquet to TXT (+ cleanup)...\n"
-    yield "=" * 50 + "\n"
-    for line in _stream_run_script(python_exe, PARQUET_TO_TXT_SCRIPT, [PARQUET_TO_TXT_SCRIPT, txt_dir, txt_dir]):
-        yield line
+    list_path = None
+    if input_files:
+        fd, list_path = tempfile.mkstemp(prefix="parser_inputs_", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(input_files))
+        args = [XML_TO_TXT_SCRIPT, "--file-list", list_path, "--out", txt_dir]
+    else:
+        args = [XML_TO_TXT_SCRIPT, input_dir, txt_dir]
+    try:
+        for line in _stream_run_script(python_exe, XML_TO_TXT_SCRIPT, args):
+            yield line
+    finally:
+        if list_path:
+            try:
+                os.unlink(list_path)
+            except OSError:
+                pass
 
     # Optional: Enrich files
     if customize_txts:
         cellref = cellref_dir or CELLREF_DEFAULT_PATH
 
         yield "\n" + "=" * 50 + "\n"
-        yield "STEP 4: Enrich Files (LTE FDD + ENodeBFunction)...\n"
+        yield f"STEP 2/{total_steps}: Enrich Files (LTE FDD + ENodeBFunction)...\n"
         yield "=" * 50 + "\n"
         for line in _stream_run_script(python_exe, POST_PROCESS_4_SCRIPT, [POST_PROCESS_4_SCRIPT, txt_dir, cellref, enr_dir]):
             yield line
 
         yield "\n" + "=" * 50 + "\n"
-        yield "STEP 5: Enrich Files (TDD + FDD combined)...\n"
+        yield f"STEP 3/{total_steps}: Enrich Files (TDD + FDD combined)...\n"
         yield "=" * 50 + "\n"
         for line in _stream_run_script(python_exe, POST_PROCESS_5_SCRIPT, [POST_PROCESS_5_SCRIPT, txt_dir, enr_dir]):
             yield line
 
         yield "\n" + "=" * 50 + "\n"
-        yield "STEP 6: Enrich Files (5G NR)...\n"
+        yield f"STEP 4/{total_steps}: Enrich Files (5G NR)...\n"
         yield "=" * 50 + "\n"
         for line in _stream_run_script(python_exe, POST_PROCESS_6_SCRIPT, [POST_PROCESS_6_SCRIPT, txt_dir, enr_dir]):
             yield line
@@ -881,14 +760,20 @@ def api_run_parser_pipeline():
         return "", 204
     data = request.get_json(force=True, silent=True) or {}
     input_dir = (data.get("input_dir") or "").strip().replace("/", os.sep)
+    raw_files = data.get("input_files") or []
+    if not isinstance(raw_files, list):
+        raw_files = []
+    input_files = [str(f).strip().replace("/", os.sep) for f in raw_files if str(f).strip()]
     output_dir = (data.get("output_dir") or "").strip().replace("/", os.sep) or input_dir
     customize_txts = bool(data.get("customize_txts", False))
     cellref_dir = (data.get("cellref_dir") or CELLREF_DEFAULT_PATH).strip().replace("/", os.sep)
     enriched_dir = (data.get("enriched_dir") or "").strip().replace("/", os.sep) or output_dir
-    if not input_dir:
-        return Response("input_dir required\n", status=400, mimetype="text/plain")
+    if not input_dir and not input_files:
+        return Response("input_dir or input_files required\n", status=400, mimetype="text/plain")
+    if not output_dir:
+        return Response("output_dir required\n", status=400, mimetype="text/plain")
     return Response(
-        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir),
+        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files),
         mimetype="text/plain",
         headers={"X-Content-Type-Options": "nosniff"},
     )
@@ -923,40 +808,111 @@ def api_export_site_ids():
         return jsonify({"ok": False, "error": str(e)}), 400
 
 
-@app.route("/api/list-dir", methods=["POST", "OPTIONS"])
-def api_list_dir():
-    """List subdirectories of a given path (for the custom folder browser modal)."""
+@app.route("/api/local/list", methods=["POST", "OPTIONS"])
+def api_local_list():
+    """List folders and files of a path for the file/folder browser modal.
+
+    Empty path → drive list ("This PC"). With "nearest": true, a missing path
+    falls back to its closest existing parent (handy for not-yet-created outputs).
+    """
     if request.method == "OPTIONS":
         return "", 204
+    import stat as _stat
     import string as _string
     data = request.get_json(silent=True) or {}
-    raw = (data.get("path") or "").strip().replace("/", os.sep).rstrip(os.sep)
-    # Root request → return available drives
+    raw = (data.get("path") or "").strip().strip('"').replace("/", os.sep)
     if not raw:
-        drives = [d + ":/" for d in _string.ascii_uppercase if os.path.exists(d + ":/")]
-        return jsonify({"path": "", "items": drives, "parent": None, "is_drives": True})
+        entries = [
+            {"name": f"{d}:", "is_dir": True, "size": 0, "mtime": None, "path": f"{d}:/"}
+            for d in _string.ascii_uppercase if os.path.exists(f"{d}:\\")
+        ]
+        return jsonify({"path": "", "parent": None, "entries": entries})
+    if re.fullmatch(r"[A-Za-z]:", raw):
+        raw += os.sep
+    raw = os.path.abspath(raw)
+    if not os.path.isdir(raw) and data.get("nearest"):
+        while not os.path.isdir(raw) and os.path.dirname(raw) != raw:
+            raw = os.path.dirname(raw)
     if not os.path.isdir(raw):
-        return jsonify({"error": "Not a directory"}), 400
+        return jsonify({"error": f"Folder not found: {raw}"}), 404
+    hidden_mask = getattr(_stat, "FILE_ATTRIBUTE_HIDDEN", 0) | getattr(_stat, "FILE_ATTRIBUTE_SYSTEM", 0)
+    entries = []
     try:
-        all_entries = os.listdir(raw)
+        with os.scandir(raw) as it:
+            for e in it:
+                if e.name.startswith((".", "$")):
+                    continue
+                try:
+                    st = e.stat()
+                    if getattr(st, "st_file_attributes", 0) & hidden_mask:
+                        continue
+                    is_dir = e.is_dir()
+                except OSError:
+                    continue  # broken junctions, locked system files
+                entries.append({
+                    "name": e.name,
+                    "is_dir": is_dir,
+                    "size": 0 if is_dir else st.st_size,
+                    "mtime": st.st_mtime,
+                    "path": e.path.replace("\\", "/"),
+                })
     except PermissionError:
-        return jsonify({"error": "Permission denied"}), 403
+        return jsonify({"error": f"Permission denied: {raw}"}), 403
     except OSError as e:
         return jsonify({"error": str(e)}), 500
-    items = []
-    for d in all_entries:
-        if d.startswith("."):
-            continue
-        try:
-            if os.path.isdir(os.path.join(raw, d)):
-                items.append(d)
-        except OSError:
-            continue
-    items.sort(key=str.lower)
-    norm = raw.replace("\\", "/")
-    parent_raw = os.path.dirname(raw)
-    parent = parent_raw.replace("\\", "/") if parent_raw != raw else None
-    return jsonify({"path": norm, "items": items, "parent": parent, "is_drives": False})
+    entries.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+    parent = os.path.dirname(raw)
+    return jsonify({
+        "path": raw.replace("\\", "/"),
+        # Drive root → parent "" (the drive list)
+        "parent": parent.replace("\\", "/") if parent != raw else "",
+        "entries": entries,
+    })
+
+
+@app.route("/api/local/places")
+def api_local_places():
+    """Quick-access shortcuts for the file browser (Explorer-style): Downloader
+    data, OneDrive (corporate/personal), Home, Desktop, Documents, Downloads, drives."""
+    import string as _string
+    places = []
+    seen_paths = set()
+    seen_labels = set()
+
+    def add(label, path, icon):
+        if not path or label in seen_labels:
+            return
+        p = os.path.normpath(path)
+        key = os.path.normcase(p)
+        if key in seen_paths or not os.path.isdir(p):
+            return
+        seen_paths.add(key)
+        seen_labels.add(label)
+        places.append({"label": label, "path": p.replace("\\", "/"), "icon": icon})
+
+    app_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else SCRIPT_DIR
+    add("Downloader data", os.path.join(app_dir, "data"), "bi-box-seam")
+    add("Downloader data", "C:\\Downloader\\data", "bi-box-seam")
+
+    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    onedrive = os.environ.get("OneDrive") or ""
+    for var in ("OneDriveCommercial", "OneDrive", "OneDriveConsumer"):
+        od = os.environ.get(var)
+        if od:
+            base = os.path.basename(os.path.normpath(od))
+            add(base if base.lower().startswith("onedrive") else "OneDrive", od, "bi-cloud")
+    add("Home", home, "bi-house")
+    # Desktop/Documents are often redirected into OneDrive
+    for label, sub, icon in (("Desktop", "Desktop", "bi-display"), ("Documents", "Documents", "bi-file-earmark-text")):
+        if onedrive:
+            add(label, os.path.join(onedrive, sub), icon)
+        add(label, os.path.join(home, sub), icon)
+    add("Downloads", os.path.join(home, "Downloads"), "bi-download")
+    for letter in _string.ascii_uppercase:
+        drive = f"{letter}:\\"
+        if os.path.exists(drive):
+            add(f"{letter}:", drive, "bi-hdd")
+    return jsonify({"places": places})
 
 
 _shutdown_timer = None

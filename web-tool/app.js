@@ -5,10 +5,12 @@
  */
 
 const STORAGE_PROFILES = 'downloader_enm_profiles';
-const STORAGE_CUSTOM_ENMS = 'downloader_custom_enms';
+const STORAGE_CUSTOM_ENMS = 'downloader_custom_enms';  // legacy, migrated into STORAGE_ENM_LIST
+const STORAGE_ENM_LIST = 'downloader_enm_list';
 const STORAGE_LAST_OUTPUT_DIR = 'downloader_last_output_dir';
 const STORAGE_SITE_LIST_SAVE_DIR = 'downloader_site_list_save_dir';
-const STORAGE_PARSER_INPUT = 'downloader_parser_input_dir';
+const STORAGE_PARSER_FILES = 'downloader_parser_input_files';
+const STORAGE_FB_LAST_DIR = 'downloader_file_browser_last_dir';
 const STORAGE_PARSER_OUTPUT = 'downloader_parser_output_dir';
 const STORAGE_PARSER_CELLREF = 'downloader_parser_cellref_dir';
 const STORAGE_PARSER_ENRICHED = 'downloader_parser_enriched_dir';
@@ -23,36 +25,43 @@ let siteListLoadedFromFile = false;
 let selectedMunicipalities = [];
 let siteListBusy = false;
 
-const ENM_SERVERS = {
-  'ENMBARB': 'https://enmbarb.ran.redestlf.br/',
-  'ENMBARA': 'https://enmbara.ran.redestlf.br/',
-  'ENMCTPB': 'https://enmctpb.ran.redestlf.br/',
-  'ENMCTPA': 'https://enmctpa.ran.redestlf.br/'
-};
-
-/** ENM order in table (short name for job: ENMBARA -> BARA) */
-const ENM_IDS = ['ENMBARA', 'ENMBARB', 'ENMCTPB', 'ENMCTPA'];
-
-/** Base ENMs that ship with the tool (cannot be removed). */
-const BASE_ENMS = [
+/**
+ * ENMs used to seed the list on first run only. After that the list lives in
+ * localStorage and is fully editable (add / edit / remove / import / export),
+ * so the tool can be used with any operator.
+ */
+const DEFAULT_ENMS = [
   { id: 'ENMBARA', url: 'https://enmbara.ran.redestlf.br/' },
   { id: 'ENMBARB', url: 'https://enmbarb.ran.redestlf.br/' },
   { id: 'ENMCTPB', url: 'https://enmctpb.ran.redestlf.br/' },
   { id: 'ENMCTPA', url: 'https://enmctpa.ran.redestlf.br/' },
 ];
 
-function loadCustomEnms() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_CUSTOM_ENMS)) || []; }
-  catch { return []; }
+const ENM_ID_RE = /^[A-Z0-9_-]{1,32}$/;
+
+function saveEnmList(list) {
+  try {
+    localStorage.setItem(STORAGE_ENM_LIST, JSON.stringify(list));
+  } catch (_) {
+    showEnmResult('danger', 'Could not save the ENM list.');
+  }
 }
 
-function saveCustomEnms(arr) {
-  localStorage.setItem(STORAGE_CUSTOM_ENMS, JSON.stringify(arr));
-}
-
-/** Returns the full ENM list (base + custom). Source of truth for all ENM operations. */
+/** Returns the ENM list [{ id, url }]. Source of truth for all ENM operations. */
 function getEnmList() {
-  return [...BASE_ENMS, ...loadCustomEnms()];
+  try {
+    const v = JSON.parse(localStorage.getItem(STORAGE_ENM_LIST));
+    if (Array.isArray(v)) return v.filter(e => e && e.id && e.url);
+  } catch (_) {}
+  // First run: defaults + ENMs added with the old "custom ENM" feature.
+  const seeded = DEFAULT_ENMS.map(e => ({ ...e }));
+  try {
+    (JSON.parse(localStorage.getItem(STORAGE_CUSTOM_ENMS)) || []).forEach(e => {
+      if (e && e.id && e.url && !seeded.some(s => s.id === e.id)) seeded.push({ id: e.id, url: e.url });
+    });
+  } catch (_) {}
+  saveEnmList(seeded);
+  return seeded;
 }
 
 function enmShortName(id) {
@@ -711,19 +720,42 @@ function updateMunicipalityDatalist() {
   updateMunicipalityCount();
 }
 
-// ---------- ENM rows ----------
-function renderEnmRows() {
+// ---------- ENM rows (editable list: add / edit / remove / import / export) ----------
+
+/** Snapshot of what is typed in the ENM table, so a re-render does not lose it. */
+function _captureEnmRowState() {
+  const state = {};
+  getEnmList().forEach(({ id }) => {
+    const u = document.getElementById(`enm-username-${id}`);
+    if (!u) return;
+    state[id] = {
+      username: u.value,
+      password: document.getElementById(`enm-password-${id}`).value,
+      include: document.getElementById(`enm-include-${id}`).checked
+    };
+  });
+  return state;
+}
+
+function _enmHost(url) {
+  try { return new URL(url).host; } catch (_) { return url; }
+}
+
+function renderEnmRows(state) {
   const tbody = document.getElementById('enm-rows');
   if (!tbody) return;
-  const baseIds = new Set(BASE_ENMS.map(e => e.id));
-  tbody.innerHTML = getEnmList().map(({ id }) => {
-    const isCustom = !baseIds.has(id);
-    const removeBtn = isCustom
-      ? `<button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Remove ENM" onclick="removeCustomEnm('${id}')"><i class="bi bi-x-circle"></i></button>`
-      : '';
-    return `
+  const list = getEnmList();
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted small py-3">' +
+      'No ENMs configured — use <strong>Add ENM</strong> or <strong>Import</strong> to add your operator\'s ENMs.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(({ id, url }) => `
     <tr>
-      <td class="align-middle"><span class="fw-bold">${id}</span>${removeBtn}</td>
+      <td class="align-middle enm-name-cell">
+        <div class="fw-bold">${_fbEsc(id)}</div>
+        <div class="enm-url" title="${_fbEsc(url)}">${_fbEsc(_enmHost(url))}</div>
+      </td>
       <td class="text-center align-middle">
         <input class="form-check-input" type="checkbox" id="enm-include-${id}" data-enm-id="${id}" title="Include this ENM in dump">
       </td>
@@ -733,58 +765,186 @@ function renderEnmRows() {
       <td class="align-middle">
         <input type="password" class="form-control form-control-sm" id="enm-password-${id}" placeholder="Password">
       </td>
-    </tr>`;
-  }).join('');
+      <td class="align-middle text-end enm-actions">
+        <button type="button" class="btn btn-link btn-sm p-0" data-enm-action="edit" data-enm-id="${id}" title="Edit name / URL"><i class="bi bi-pencil"></i></button>
+        <button type="button" class="btn btn-link btn-sm p-0 text-danger" data-enm-action="remove" data-enm-id="${id}" title="Remove ENM"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`).join('');
+  if (state) {
+    Object.entries(state).forEach(([id, s]) => {
+      const u = document.getElementById(`enm-username-${id}`);
+      if (!u) return;
+      u.value = s.username;
+      document.getElementById(`enm-password-${id}`).value = s.password;
+      document.getElementById(`enm-include-${id}`).checked = s.include;
+    });
+  }
 }
 
-function removeCustomEnm(id) {
-  const custom = loadCustomEnms().filter(e => e.id !== id);
-  saveCustomEnms(custom);
-  renderEnmRows();
+/** Normalize and validate an ENM entry. Returns { enm } or { error }. */
+function _validateEnm(id, url, originalId) {
+  id = String(id || '').trim().toUpperCase();
+  url = String(url || '').trim();
+  if (!ENM_ID_RE.test(id)) return { error: 'ENM name: letters, digits, "-" or "_" only (max 32 characters).' };
+  if (!/^https?:\/\/[^\s/]+/i.test(url)) return { error: 'URL must start with https:// — e.g. https://enm01.operator.com/' };
+  if (!url.endsWith('/')) url += '/';
+  if (getEnmList().some(e => e.id === id && e.id !== originalId)) return { error: `ENM "${id}" already exists.` };
+  return { enm: { id, url } };
 }
 
-function addCustomEnm(id, url) {
-  id = id.trim().toUpperCase();
-  url = url.trim();
-  if (!id) { alert('ENM ID is required.'); return false; }
-  if (!url) { alert('URL is required.'); return false; }
-  const all = getEnmList();
-  if (all.some(e => e.id === id)) { alert(`ENM "${id}" already exists.`); return false; }
-  const custom = loadCustomEnms();
-  custom.push({ id, url });
-  saveCustomEnms(custom);
-  renderEnmRows();
-  return true;
+/** Rename the ENM key inside every saved profile, so credentials follow the new name. */
+function _renameEnmInProfiles(oldId, newId) {
+  const data = loadProfilesData();
+  let changed = false;
+  (data.profiles || []).forEach(p => {
+    if (p.enms && p.enms[oldId] && !p.enms[newId]) {
+      p.enms[newId] = p.enms[oldId];
+      delete p.enms[oldId];
+      changed = true;
+    }
+  });
+  if (changed) saveProfilesData(data);
 }
 
-function showAddEnmForm() {
-  const existing = document.getElementById('add-enm-form');
-  if (existing) { existing.remove(); return; }
-  const container = document.getElementById('add-enm-container');
+function removeEnm(id) {
+  if (!confirm(`Remove ENM "${id}" from the list?`)) return;
+  const state = _captureEnmRowState();
+  saveEnmList(getEnmList().filter(e => e.id !== id));
+  renderEnmRows(state);
+  closeEnmForm();
+}
+
+function closeEnmForm() {
+  const form = document.getElementById('enm-form');
+  if (form) form.remove();
+}
+
+/** Inline form to add a new ENM (editId empty) or edit an existing one. */
+function showEnmForm(editId) {
+  closeEnmForm();
+  const container = document.getElementById('enm-form-container');
   if (!container) return;
+  const current = editId ? getEnmList().find(e => e.id === editId) : null;
   const form = document.createElement('div');
-  form.id = 'add-enm-form';
-  form.className = 'mt-2 p-2 border rounded bg-light';
+  form.id = 'enm-form';
+  form.className = 'enm-form mt-2';
   form.innerHTML = `
+    <div class="small fw-bold mb-1">${current ? `Edit ENM ${_fbEsc(current.id)}` : 'Add ENM'}</div>
     <div class="row g-2 align-items-end">
       <div class="col-auto">
-        <label class="form-label small mb-1">ENM ID</label>
-        <input type="text" id="new-enm-id" class="form-control form-control-sm" placeholder="ENMSP01" style="width:110px"
-               oninput="this.value=this.value.toUpperCase()">
+        <label class="form-label small mb-1" for="enm-form-id">Name</label>
+        <input type="text" id="enm-form-id" class="form-control form-control-sm" placeholder="ENM01" style="width:130px" maxlength="32">
       </div>
       <div class="col">
-        <label class="form-label small mb-1">URL</label>
-        <input type="text" id="new-enm-url" class="form-control form-control-sm" placeholder="https://enmsp01.ran.empresa.br/">
+        <label class="form-label small mb-1" for="enm-form-url">URL</label>
+        <input type="text" id="enm-form-url" class="form-control form-control-sm" placeholder="https://enm01.operator.com/">
       </div>
       <div class="col-auto d-flex gap-1">
-        <button class="btn btn-primary btn-sm" onclick="
-          if(addCustomEnm(document.getElementById('new-enm-id').value, document.getElementById('new-enm-url').value))
-            document.getElementById('add-enm-form').remove();">Add</button>
-        <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('add-enm-form').remove()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="enm-form-save"><i class="bi bi-check-lg"></i> ${current ? 'Save' : 'Add'}</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="enm-form-cancel">Cancel</button>
       </div>
-    </div>`;
+    </div>
+    <div class="text-danger small mt-1" id="enm-form-error"></div>`;
   container.appendChild(form);
-  document.getElementById('new-enm-id').focus();
+
+  const idEl = document.getElementById('enm-form-id');
+  const urlEl = document.getElementById('enm-form-url');
+  if (current) { idEl.value = current.id; urlEl.value = current.url; }
+  idEl.addEventListener('input', () => { idEl.value = idEl.value.toUpperCase(); });
+
+  const submit = () => {
+    const res = _validateEnm(idEl.value, urlEl.value, current ? current.id : null);
+    if (res.error) { document.getElementById('enm-form-error').textContent = res.error; return; }
+    const state = _captureEnmRowState();
+    const list = getEnmList();
+    if (current) {
+      list[list.findIndex(e => e.id === current.id)] = res.enm;
+      if (res.enm.id !== current.id) {
+        if (state[current.id]) { state[res.enm.id] = state[current.id]; delete state[current.id]; }
+        _renameEnmInProfiles(current.id, res.enm.id);
+      }
+    } else {
+      list.push(res.enm);
+    }
+    saveEnmList(list);
+    renderEnmRows(state);
+    closeEnmForm();
+    showEnmResult('success', current ? `ENM "${res.enm.id}" updated.` : `ENM "${res.enm.id}" added.`);
+  };
+  document.getElementById('enm-form-save').addEventListener('click', submit);
+  document.getElementById('enm-form-cancel').addEventListener('click', closeEnmForm);
+  form.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+    if (e.key === 'Escape') closeEnmForm();
+  });
+  idEl.focus();
+}
+
+/** Download the ENM list (names + URLs only, never credentials) as JSON. */
+function exportEnmList() {
+  const payload = { type: 'downloader-enm-list', version: 1, enms: getEnmList().map(({ id, url }) => ({ id, url })) };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'enm_list.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  showEnmResult('success', `Exported ${payload.enms.length} ENM(s) to enm_list.json (no passwords included).`);
+}
+
+/** Import ENMs from JSON ({enms:[...]} or a plain array). Same name → URL updated; new names → added. */
+async function importEnmList(file) {
+  let items;
+  try {
+    const parsed = JSON.parse(await file.text());
+    items = Array.isArray(parsed) ? parsed : parsed.enms;
+    if (!Array.isArray(items)) throw new Error('no "enms" list found');
+  } catch (e) {
+    showEnmResult('danger', `Could not read ${_fbEsc(file.name)}: ${_fbEsc(e.message)}`);
+    return;
+  }
+  const state = _captureEnmRowState();
+  const list = getEnmList();
+  let added = 0, updated = 0;
+  const bad = [];
+  items.forEach(item => {
+    const id = String((item && item.id) || '').trim().toUpperCase();
+    const res = _validateEnm(id, item && item.url, id);  // same name allowed → update
+    if (res.error) { bad.push(id || '?'); return; }
+    const idx = list.findIndex(e => e.id === res.enm.id);
+    if (idx >= 0) { list[idx] = res.enm; updated++; }
+    else { list.push(res.enm); added++; }
+  });
+  saveEnmList(list);
+  renderEnmRows(state);
+  let msg = `Imported: ${added} added, ${updated} updated.`;
+  if (bad.length) msg += ` Skipped (invalid name/URL): ${_fbEsc(bad.join(', '))}.`;
+  showEnmResult(bad.length ? 'warning' : 'success', msg);
+}
+
+function initEnmListControls() {
+  const tbody = document.getElementById('enm-rows');
+  if (tbody) tbody.addEventListener('click', e => {
+    const btn = e.target.closest('[data-enm-action]');
+    if (!btn) return;
+    if (btn.dataset.enmAction === 'edit') showEnmForm(btn.dataset.enmId);
+    else if (btn.dataset.enmAction === 'remove') removeEnm(btn.dataset.enmId);
+  });
+  const btnAdd = document.getElementById('btn-add-enm');
+  if (btnAdd) btnAdd.addEventListener('click', () => showEnmForm());
+  const btnExport = document.getElementById('btn-export-enms');
+  if (btnExport) btnExport.addEventListener('click', exportEnmList);
+  const fileInput = document.getElementById('enm-import-input');
+  const btnImport = document.getElementById('btn-import-enms');
+  if (btnImport && fileInput) {
+    btnImport.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) importEnmList(fileInput.files[0]);
+      fileInput.value = '';
+    });
+  }
 }
 
 /** Retorna lista de ENMs selecionados para dump (incluir marcado e username preenchido). */
@@ -907,7 +1067,7 @@ function deleteEnmProfile() {
   if (data.last_used_profile === name) data.last_used_profile = null;
   saveProfilesData(data);
   loadEnmProfiles();
-  setEnmFormData({ ENMBARA: {}, ENMBARB: {}, ENMCTPB: {}, ENMCTPA: {} });
+  setEnmFormData(Object.fromEntries(getEnmList().map(e => [e.id, {}])));
   showEnmResult('info', `Profile "${name}" deleted.`);
 }
 
@@ -1218,105 +1378,323 @@ function getPathFromFolderInput(inputEl) {
   return '';
 }
 
-// ---------- Directory Browser Modal ----------
-let _dirBrowserResolve = null;
-let _dirBrowserCurrentPath = '';
+// ---------- File / Folder Browser Modal (Explorer-style, server-side listing) ----------
+// Double-click opens a folder; in files mode a click toggles a file and the
+// selection survives navigation, so files can be picked from several folders.
+const _fb = {
+  mode: 'folder', exts: [], path: '', parent: null, entries: [], visible: [],
+  selected: new Map(), folderPick: null, resolve: null, placesLoaded: false
+};
 
-async function _dirBrowserLoad(path) {
-  const listEl = document.getElementById('dir-browser-list');
-  const bcEl = document.getElementById('dir-browser-breadcrumb');
-  const pathInput = document.getElementById('dir-browser-path-input');
-  listEl.innerHTML = '<div class="p-3 text-muted small"><i class="bi bi-hourglass-split"></i> Loading...</div>';
+function _fbEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatBytes(n) {
+  if (!n) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return (i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)) + ' ' + units[i];
+}
+
+function _fbFmtDate(t) {
+  return new Date(t * 1000).toLocaleString('sv').slice(0, 16);
+}
+
+function _fbFileIcon(name) {
+  const n = name.toLowerCase();
+  if (n.endsWith('.zip')) return 'bi-file-earmark-zip-fill fb-ic-zip';
+  if (n.endsWith('.xml') || n.endsWith('.xml.gz')) return 'bi-file-earmark-code-fill fb-ic-xml';
+  return 'bi-file-earmark fb-ic-file';
+}
+
+function _fbAccepts(name) {
+  const n = name.toLowerCase();
+  return _fb.exts.some(e => n.endsWith(e));
+}
+
+function _fbPick(e) {
+  return { path: e.path, name: e.name, size: e.size || 0 };
+}
+
+async function _fbLoadPlaces() {
+  if (_fb.placesLoaded) return;
+  const box = document.getElementById('fb-places');
   try {
-    const resp = await fetch('/api/list-dir', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: path || '' })
-    });
-    const data = await resp.json();
-    if (data.error) { listEl.innerHTML = `<div class="p-3 text-danger small">${data.error}</div>`; return; }
-    _dirBrowserCurrentPath = data.path || '';
-    if (pathInput) pathInput.value = _dirBrowserCurrentPath;
-    // Breadcrumb
-    if (bcEl) {
-      if (!_dirBrowserCurrentPath) {
-        bcEl.innerHTML = '<span class="text-muted">This PC</span>';
-      } else {
-        const parts = _dirBrowserCurrentPath.split('/').filter(Boolean);
-        let html = `<span class="dir-bc-item text-primary" style="cursor:pointer" data-path="" title="This PC"><i class="bi bi-pc-display-horizontal"></i></span>`;
-        let acc = '';
-        parts.forEach((p, i) => {
-          acc += (acc ? '/' : '') + p;
-          const isLast = i === parts.length - 1;
-          const cur = acc;
-          html += `<span class="text-muted mx-1">/</span>`;
-          html += isLast
-            ? `<span class="fw-bold">${p}</span>`
-            : `<span class="dir-bc-item text-primary" style="cursor:pointer" data-path="${cur}">${p}</span>`;
-        });
-        bcEl.innerHTML = html;
-        bcEl.querySelectorAll('.dir-bc-item').forEach(el => {
-          el.addEventListener('click', () => _dirBrowserLoad(el.dataset.path));
-        });
-      }
-    }
-    // List
-    let rows = '';
-    if (data.parent !== null && !data.is_drives) {
-      rows += `<div class="dir-item d-flex align-items-center px-3 py-2 border-bottom" style="cursor:pointer" data-path="${data.parent}">
-        <i class="bi bi-arrow-up text-secondary me-2"></i><span class="text-secondary small">..</span></div>`;
-    }
-    const items = data.items || [];
-    if (!items.length && !data.is_drives) {
-      rows += '<div class="p-3 text-muted small">Empty folder</div>';
-    } else {
-      items.forEach(item => {
-        const full = data.is_drives ? item : (data.path ? data.path + '/' + item : item);
-        const label = data.is_drives ? item : item;
-        rows += `<div class="dir-item d-flex align-items-center px-3 py-2 border-bottom" style="cursor:pointer" data-path="${full}">
-          <i class="bi bi-folder-fill text-warning me-2"></i><span class="small">${label}</span></div>`;
-      });
-    }
-    const countInfo = items.length ? `<div class="px-3 py-1 bg-light border-bottom text-muted small">${items.length} folder(s)</div>` : '';
-    listEl.innerHTML = countInfo + (rows || '<div class="p-3 text-muted small">No folders found</div>');
-    listEl.querySelectorAll('.dir-item').forEach(el => {
-      el.addEventListener('click', () => _dirBrowserLoad(el.dataset.path));
-      el.addEventListener('mouseenter', () => el.classList.add('bg-light'));
-      el.addEventListener('mouseleave', () => el.classList.remove('bg-light'));
-    });
-  } catch (e) {
-    listEl.innerHTML = `<div class="p-3 text-danger small">Error: ${e.message}</div>`;
+    const d = await (await fetch('/api/local/places')).json();
+    box.innerHTML = (d.places || []).map(p =>
+      `<button type="button" class="fb-place" data-path="${_fbEsc(p.path)}" title="${_fbEsc(p.path)}">` +
+      `<i class="bi ${_fbEsc(p.icon)}"></i>${_fbEsc(p.label)}</button>`).join('');
+    box.querySelectorAll('.fb-place').forEach(b => b.addEventListener('click', () => _fbNavigate(b.dataset.path)));
+    _fb.placesLoaded = true;
+  } catch (_) {
+    box.innerHTML = '';
   }
 }
 
-/**
- * Open the custom directory browser modal.
- * @param {string} initialDir - Starting directory.
- * @returns {Promise<string>} - Selected path, or empty string if cancelled.
- */
-function browseFolder(initialDir) {
-  return new Promise(resolve => {
-    _dirBrowserResolve = resolve;
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('dirBrowserModal'));
-    _dirBrowserLoad(initialDir || '');
-    // Wire select button (reset listener each time)
-    const btnSelect = document.getElementById('btn-dir-browser-select');
-    const pathInput = document.getElementById('dir-browser-path-input');
-    btnSelect.onclick = () => {
-      const chosen = (pathInput && pathInput.value.trim()) || _dirBrowserCurrentPath;
-      modal.hide();
-      if (_dirBrowserResolve) { _dirBrowserResolve(chosen.replace(/\\/g, '/')); _dirBrowserResolve = null; }
-    };
-    // Allow typing a path and pressing Enter to navigate
-    if (pathInput) {
-      pathInput.onkeydown = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); _dirBrowserLoad(pathInput.value.trim()); }
-      };
-    }
-    document.getElementById('dirBrowserModal').addEventListener('hidden.bs.modal', () => {
-      if (_dirBrowserResolve) { _dirBrowserResolve(''); _dirBrowserResolve = null; }
-    }, { once: true });
-    modal.show();
+async function _fbNavigate(path, nearest) {
+  const tbody = document.getElementById('fb-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="fb-empty"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+  try {
+    const resp = await fetch('/api/local/list', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path || '', nearest: !!nearest })
+    });
+    const d = await resp.json();
+    if (!resp.ok || d.error) throw new Error(d.error || resp.statusText);
+    _fb.path = d.path;
+    _fb.parent = d.parent;
+    _fb.entries = d.entries || [];
+    _fb.folderPick = null;
+    document.getElementById('fb-path').value = d.path;
+    document.getElementById('fb-filter').value = '';
+    if (d.path) try { localStorage.setItem(STORAGE_FB_LAST_DIR, d.path); } catch (_) {}
+    _fbRender();
+    tbody.closest('.fb-list-wrap').scrollTop = 0;
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="fb-empty text-danger"><i class="bi bi-exclamation-triangle"></i> ${_fbEsc(e.message)}</td></tr>`;
+  }
+}
+
+function _fbRender() {
+  const isFiles = _fb.mode === 'files';
+  const q = document.getElementById('fb-filter').value.trim().toLowerCase();
+  const listed = _fb.entries.filter(e => e.is_dir || !isFiles || _fbAccepts(e.name));
+  _fb.visible = listed.filter(e => !q || e.name.toLowerCase().includes(q));
+
+  let html = '';
+  if (_fb.parent !== null && !q) {
+    html += '<tr class="fb-row" data-i="-1" title="Up one level"><td class="fb-col-check"></td>' +
+      '<td class="fb-name" colspan="3"><i class="bi bi-arrow-90deg-up text-secondary"></i>..</td></tr>';
+  }
+  _fb.visible.forEach((e, i) => {
+    const pickable = isFiles && !e.is_dir;
+    const sel = pickable ? _fb.selected.has(e.path) : e.path === _fb.folderPick;
+    const cls = ['fb-row', !e.is_dir && !isFiles ? 'fb-muted' : '', sel ? 'fb-selected' : ''].join(' ');
+    const icon = e.is_dir ? (_fb.path ? 'bi-folder-fill fb-ic-dir' : 'bi-hdd-fill fb-ic-file') : _fbFileIcon(e.name);
+    html += `<tr class="${cls}" data-i="${i}" title="${_fbEsc(e.path)}">` +
+      `<td class="fb-col-check">${pickable ? `<input type="checkbox" class="form-check-input" tabindex="-1"${sel ? ' checked' : ''}>` : ''}</td>` +
+      `<td class="fb-name"><i class="bi ${icon}"></i>${_fbEsc(e.name)}</td>` +
+      `<td class="fb-col-date">${e.mtime ? _fbFmtDate(e.mtime) : ''}</td>` +
+      `<td class="fb-col-size">${e.is_dir ? '' : formatBytes(e.size)}</td></tr>`;
   });
+  if (!_fb.visible.length) {
+    const msg = q ? 'Nothing matches the filter.' : (isFiles ? 'No ZIP or XML files in this folder.' : 'Empty folder.');
+    html += `<tr><td colspan="4" class="fb-empty"><i class="bi bi-inbox"></i> ${msg}</td></tr>`;
+  }
+
+  const tbody = document.getElementById('fb-tbody');
+  tbody.innerHTML = html;
+  tbody.querySelectorAll('tr.fb-row').forEach(tr => {
+    const i = +tr.dataset.i;
+    const e = i < 0 ? null : _fb.visible[i];
+    if (!e) {
+      tr.addEventListener('click', () => _fbNavigate(_fb.parent));
+      return;
+    }
+    if (e.is_dir) {
+      tr.addEventListener('click', () => {
+        if (isFiles) return;
+        _fb.folderPick = e.path;
+        tbody.querySelectorAll('tr.fb-selected').forEach(r => r.classList.remove('fb-selected'));
+        tr.classList.add('fb-selected');
+        _fbUpdateFooter();
+      });
+      tr.addEventListener('dblclick', () => _fbNavigate(e.path));
+    } else if (isFiles) {
+      tr.addEventListener('click', () => _fbToggle(e, tr));
+      tr.addEventListener('dblclick', () => { _fb.selected.set(e.path, _fbPick(e)); _fbConfirm(); });
+    }
+  });
+
+  const nDirs = _fb.entries.filter(e => e.is_dir).length;
+  const nFiles = _fb.entries.length - nDirs;
+  const hidden = _fb.entries.length - listed.length;
+  let status = _fb.path
+    ? `${nDirs} folder(s) · ${nFiles - hidden} ${isFiles ? 'ZIP/XML ' : ''}file(s)` + (hidden ? ` · ${hidden} other file(s) hidden` : '')
+    : 'This PC';
+  status += ' — double-click a folder to open it';
+  document.getElementById('fb-status').textContent = status;
+  _fbUpdateFooter();
+}
+
+function _fbToggle(e, tr) {
+  const on = !_fb.selected.has(e.path);
+  if (on) _fb.selected.set(e.path, _fbPick(e));
+  else _fb.selected.delete(e.path);
+  tr.classList.toggle('fb-selected', on);
+  const chk = tr.querySelector('input[type="checkbox"]');
+  if (chk) chk.checked = on;
+  _fbUpdateFooter();
+}
+
+function _fbUpdateFooter() {
+  const info = document.getElementById('fb-selection-info');
+  const btn = document.getElementById('fb-btn-select');
+  const label = document.getElementById('fb-btn-select-label');
+  const chkAll = document.getElementById('fb-check-all');
+  if (_fb.mode === 'files') {
+    const files = [..._fb.selected.values()];
+    const total = files.reduce((a, f) => a + (f.size || 0), 0);
+    info.textContent = files.length
+      ? `${files.length} file(s) selected · ${formatBytes(total)}`
+      : 'Click files to select them — you can pick from several folders.';
+    label.textContent = files.length ? `Use ${files.length} file(s)` : 'Use selected files';
+    btn.disabled = !files.length;
+    const pickable = _fb.visible.filter(e => !e.is_dir);
+    const n = pickable.filter(e => _fb.selected.has(e.path)).length;
+    chkAll.disabled = !pickable.length;
+    chkAll.checked = pickable.length > 0 && n === pickable.length;
+    chkAll.indeterminate = n > 0 && n < pickable.length;
+  } else {
+    const typed = document.getElementById('fb-path').value.trim();
+    const target = _fb.folderPick || _fb.path || typed;
+    info.textContent = target;
+    label.textContent = _fb.folderPick ? 'Select highlighted folder' : 'Select this folder';
+    btn.disabled = !target;
+  }
+}
+
+function _fbConfirm() {
+  let result;
+  if (_fb.mode === 'files') {
+    result = [..._fb.selected.values()];
+    if (!result.length) return;
+  } else {
+    // A path typed (but not navigated to) wins, so not-yet-existing outputs can be chosen.
+    const typed = document.getElementById('fb-path').value.trim().replace(/\\/g, '/');
+    result = (typed && typed !== _fb.path) ? typed : (_fb.folderPick || _fb.path);
+    if (!result) return;
+  }
+  const resolve = _fb.resolve;
+  _fb.resolve = null;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('fileBrowserModal')).hide();
+  if (resolve) resolve(result);
+}
+
+/**
+ * Open the file/folder browser modal.
+ * @param {object} opts
+ *   mode: 'folder' (default) or 'files'; exts: accepted extensions in files mode;
+ *   initialPath; title; preselected: [{path, name, size}] (files mode).
+ * @returns {Promise<string|Array|null>} folder path, array of files, or null if cancelled.
+ */
+function openFileBrowser(opts = {}) {
+  return new Promise(resolve => {
+    const modalEl = document.getElementById('fileBrowserModal');
+    if (_fb.resolve) _fb.resolve(null);
+    _fb.mode = opts.mode === 'files' ? 'files' : 'folder';
+    _fb.exts = (opts.exts || []).map(e => e.toLowerCase());
+    _fb.selected = new Map((opts.preselected || []).map(f => [f.path, f]));
+    _fb.folderPick = null;
+    _fb.entries = [];
+    _fb.visible = [];
+    _fb.resolve = resolve;
+    modalEl.classList.toggle('fb-mode-files', _fb.mode === 'files');
+    document.getElementById('fb-title').innerHTML = _fb.mode === 'files'
+      ? `<i class="bi bi-file-earmark-zip"></i> ${_fbEsc(opts.title || 'Select files')}`
+      : `<i class="bi bi-folder2-open"></i> ${_fbEsc(opts.title || 'Select folder')}`;
+    let start = opts.initialPath || '';
+    if (!start) try { start = localStorage.getItem(STORAGE_FB_LAST_DIR) || ''; } catch (_) {}
+    _fbUpdateFooter();
+    _fbLoadPlaces();
+    _fbNavigate(start, true);
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      if (_fb.resolve === resolve) { _fb.resolve = null; resolve(null); }
+    }, { once: true });
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  });
+}
+
+/** Folder picker used by every "Browse for folder" button. Resolves '' if cancelled. */
+async function browseFolder(initialDir) {
+  return (await openFileBrowser({ mode: 'folder', initialPath: initialDir })) || '';
+}
+
+function initFileBrowser() {
+  document.getElementById('fb-btn-up').addEventListener('click', () => {
+    if (_fb.parent !== null) _fbNavigate(_fb.parent);
+  });
+  document.getElementById('fb-btn-refresh').addEventListener('click', () => _fbNavigate(_fb.path));
+  const pathEl = document.getElementById('fb-path');
+  pathEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); _fbNavigate(pathEl.value.trim()); }
+  });
+  pathEl.addEventListener('input', _fbUpdateFooter);
+  document.getElementById('fb-filter').addEventListener('input', _fbRender);
+  document.getElementById('fb-check-all').addEventListener('change', function () {
+    _fb.visible.filter(e => !e.is_dir).forEach(e => {
+      if (this.checked) _fb.selected.set(e.path, _fbPick(e));
+      else _fb.selected.delete(e.path);
+    });
+    _fbRender();
+  });
+  document.getElementById('fb-btn-select').addEventListener('click', _fbConfirm);
+}
+
+// ---------- Parser input files (ZIP / XML) ----------
+let _parserFiles = [];
+
+function _loadParserFiles() {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORAGE_PARSER_FILES) || '[]');
+    _parserFiles = Array.isArray(v) ? v.filter(f => f && f.path && f.name) : [];
+  } catch (_) {
+    _parserFiles = [];
+  }
+}
+
+function _saveParserFiles() {
+  try { localStorage.setItem(STORAGE_PARSER_FILES, JSON.stringify(_parserFiles)); } catch (_) {}
+}
+
+function renderParserFiles() {
+  const list = document.getElementById('parser-files-list');
+  const summary = document.getElementById('parser-files-summary');
+  const btnClear = document.getElementById('btn-parser-clear-files');
+  if (!list) return;
+  list.classList.toggle('has-files', _parserFiles.length > 0);
+  if (!_parserFiles.length) {
+    list.innerHTML = '<div class="parser-files-empty"><i class="bi bi-file-earmark-zip"></i> ' +
+      'No files selected — click here or use <strong>Browse ZIP / XML…</strong></div>';
+    list.firstChild.addEventListener('click', pickParserFiles);
+  } else {
+    list.innerHTML = _parserFiles.map((f, i) => {
+      const dir = f.path.slice(0, f.path.length - f.name.length).replace(/[\\/]$/, '');
+      return `<div class="parser-file" title="${_fbEsc(f.path)}">` +
+        `<i class="bi ${_fbFileIcon(f.name)}"></i>` +
+        `<span class="parser-file-name">${_fbEsc(f.name)}</span>` +
+        `<span class="parser-file-dir">${_fbEsc(dir)}</span>` +
+        `<span class="parser-file-size">${formatBytes(f.size)}</span>` +
+        `<button type="button" class="parser-file-remove" data-i="${i}" title="Remove"><i class="bi bi-x-lg"></i></button></div>`;
+    }).join('');
+    list.querySelectorAll('.parser-file-remove').forEach(b => b.addEventListener('click', () => {
+      _parserFiles.splice(+b.dataset.i, 1);
+      _saveParserFiles();
+      renderParserFiles();
+    }));
+  }
+  const total = _parserFiles.reduce((a, f) => a + (f.size || 0), 0);
+  if (summary) summary.textContent = _parserFiles.length ? `${_parserFiles.length} file(s) · ${formatBytes(total)}` : 'No files selected';
+  if (btnClear) btnClear.disabled = !_parserFiles.length;
+}
+
+async function pickParserFiles() {
+  const last = _parserFiles.length ? _parserFiles[_parserFiles.length - 1].path.replace(/[\\/][^\\/]*$/, '') : '';
+  const picked = await openFileBrowser({
+    mode: 'files',
+    exts: ['.zip', '.xml', '.xml.gz'],
+    title: 'Select dump files (ZIP / XML)',
+    initialPath: last,
+    preselected: _parserFiles
+  });
+  if (!picked) return;
+  _parserFiles = picked;
+  _saveParserFiles();
+  renderParserFiles();
 }
 
 /** Load saved path into input and save on change/blur so paths are remembered. */
@@ -1337,20 +1715,24 @@ function bindPathStorage(inputId, storageKey) {
   });
 }
 
-/** Build parser pipeline payload from current form state. */
+/**
+ * Build parser pipeline payload from current form state.
+ * Run All passes the dump folder (overrideInputDir); the Parser card sends the picked files.
+ */
 function getParserPayload(overrideInputDir) {
-  const inputDir = overrideInputDir || document.getElementById('parser-input-dir').value.trim();
   const outputDir = document.getElementById('parser-output-dir').value.trim();
   const customizeTxts = document.getElementById('chk-customize-txts').checked;
   const cellrefDir = (document.getElementById('parser-cellref-dir') || {}).value || 'C:/Downloader/cellref';
   const enrichedDir = (document.getElementById('parser-enriched-dir') || {}).value || 'C:/Downloader/data/enriched';
-  return {
-    input_dir: inputDir,
-    output_dir: outputDir || inputDir,
+  const payload = {
+    output_dir: outputDir || overrideInputDir || '',
     customize_txts: customizeTxts,
     cellref_dir: cellrefDir.trim(),
     enriched_dir: enrichedDir.trim()
   };
+  if (overrideInputDir) payload.input_dir = overrideInputDir;
+  else payload.input_files = _parserFiles.map(f => f.path);
+  return payload;
 }
 
 /** Run full parser pipeline via streaming API. */
@@ -1363,18 +1745,17 @@ async function runParserPipeline() {
   const btnCancel = document.getElementById('btn-run-parser-cancel');
   if (!resultEl || !logArea) return;
 
-  if (!payload.input_dir) {
-    resultEl.style.display = 'block';
-    logArea.value = 'Enter Input Directory (folder with ZIP or XML files).';
+  resultEl.style.display = 'block';
+  if (!payload.input_files.length) {
+    logArea.value = 'Select at least one ZIP or XML file (Browse ZIP / XML…).';
+    return;
+  }
+  if (!payload.output_dir) {
+    logArea.value = 'Set the Output Directory (parsed TXT files).';
     return;
   }
 
-  resultEl.style.display = 'block';
-  logArea.value = 'Starting parser pipeline...\n';
-  logArea.value += 'Input:    ' + payload.input_dir + '\n';
-  logArea.value += 'Output:   ' + payload.output_dir + '\n';
-  if (payload.customize_txts) logArea.value += 'Enriched: ' + payload.enriched_dir + '\n';
-  logArea.value += '\n';
+  logArea.value = 'Starting parser...\n';
 
   const btn = document.getElementById('btn-run-parser');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Running...'; }
@@ -1452,14 +1833,8 @@ async function executeDump() {
   }
 
   const config = getExportConfig();
-  const parserInputEl = document.getElementById('parser-input-dir');
-  if (parserInputEl && config.output_dir) {
-    parserInputEl.value = config.output_dir;
-    try { localStorage.setItem(STORAGE_PARSER_INPUT, config.output_dir); } catch (_) {}
-  }
   appendLog(`[${new Date().toLocaleTimeString()}] Execute Dump: ${selected.length} ENM(s) selected.`);
   appendLog(`[${new Date().toLocaleTimeString()}] Output folder: ${config.output_dir}`);
-  appendLog(`[${new Date().toLocaleTimeString()}] Parser input synced to: ${config.output_dir}`);
 
   const apiUrl = 'http://127.0.0.1:8765/api/run-dump';
   appendLog('Calling server...');
@@ -1671,6 +2046,7 @@ function init() {
   if (statusTs) setInterval(updateStatusBar, 1000);
 
   renderEnmRows();
+  initEnmListControls();
   renderUfs();
   renderMoDefaultList();
   setAllMoCheckboxes(true);
@@ -1777,7 +2153,6 @@ function init() {
 
   // Remember all paths (load last used and save on change/blur)
   bindPathStorage('enm-output-dir', STORAGE_LAST_OUTPUT_DIR);
-  bindPathStorage('parser-input-dir', STORAGE_PARSER_INPUT);
   bindPathStorage('parser-output-dir', STORAGE_PARSER_OUTPUT);
   bindPathStorage('parser-cellref-dir', STORAGE_PARSER_CELLREF);
   bindPathStorage('parser-enriched-dir', STORAGE_PARSER_ENRICHED);
@@ -1824,10 +2199,10 @@ function init() {
   const btnClearLogs = document.getElementById('btn-clear-logs');
   if (btnClearLogs) btnClearLogs.addEventListener('click', clearLogs);
 
-  // Folder pickers: all use the native OS dialog via /api/browse-folder
+  // Folder pickers: all use the in-page file browser modal (server-side listing)
+  initFileBrowser();
   const folderBrowseMap = [
     { btnId: 'btn-browse-output',            inputId: 'enm-output-dir',          storageKey: STORAGE_LAST_OUTPUT_DIR },
-    { btnId: 'btn-browse-parser-input',      inputId: 'parser-input-dir',         storageKey: STORAGE_PARSER_INPUT },
     { btnId: 'btn-browse-parser-output',     inputId: 'parser-output-dir',        storageKey: STORAGE_PARSER_OUTPUT },
     { btnId: 'btn-browse-parser-cellref',    inputId: 'parser-cellref-dir',       storageKey: STORAGE_PARSER_CELLREF },
     { btnId: 'btn-browse-parser-enriched',   inputId: 'parser-enriched-dir',      storageKey: STORAGE_PARSER_ENRICHED },
@@ -1861,6 +2236,18 @@ function init() {
       try { localStorage.setItem(STORAGE_CUSTOMIZE_TXTS, String(this.checked)); } catch (_) {}
     });
   }
+
+  // Parser input files (ZIP / XML)
+  _loadParserFiles();
+  renderParserFiles();
+  const btnParserAdd = document.getElementById('btn-parser-add-files');
+  if (btnParserAdd) btnParserAdd.addEventListener('click', pickParserFiles);
+  const btnParserClear = document.getElementById('btn-parser-clear-files');
+  if (btnParserClear) btnParserClear.addEventListener('click', () => {
+    _parserFiles = [];
+    _saveParserFiles();
+    renderParserFiles();
+  });
 
   // Parser pipeline button
   const btnRunParser = document.getElementById('btn-run-parser');

@@ -178,9 +178,7 @@ python -m nuitka `
     --include-package=openpyxl `
     --include-data-dir=web-tool=web-tool `
     --include-data-files=dump_multiple_enms.py=dump_multiple_enms.py `
-    --include-data-files=parquet_to_txt.py=parquet_to_txt.py `
-    --include-data-files=xml_to_parquet.py=xml_to_parquet.py `
-    --include-data-files=extract_dump.py=extract_dump.py `
+    --include-data-files=xml_to_txt.py=xml_to_txt.py `
     --include-data-files=post_process_4_camilo.py=post_process_4_camilo.py `
     --include-data-files=post_process_5_tdd.py=post_process_5_tdd.py `
     --include-data-files=post_process_6_5g.py=post_process_6_5g.py `

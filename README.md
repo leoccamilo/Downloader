@@ -6,7 +6,7 @@ ENM dump + XML parsing + enrichment tool with a local web UI.
 - `server_downloader.py`: local backend/API used by the web app.
 - `web-tool/`: frontend (`index.html`, `app.js`, `styles.css`).
 - `dump_multiple_enms.py`: Execute Dump workflow for multiple ENMs.
-- `xml_to_parquet.py`, `parquet_to_txt.py`: parser pipeline.
+- `xml_to_txt.py`: XML parser — reads `.zip`/`.xml`/`.xml.gz` dumps (ZIPs in place, no extraction) and writes one TXT per MO.
 - `post_process_4_camilo.py`, `post_process_5_tdd.py`, `post_process_6_5g.py`: enrichment steps.
 - `START_DOWNLOADER.bat` / `START_DOWNLOADER_HIDDEN.vbs`: app launchers.
 
@@ -24,7 +24,7 @@ ENM dump + XML parsing + enrichment tool with a local web UI.
 ## Default Folders
 - Site list base dir (default): `C:/Downloader/cellref`
 - Parser pipeline:
-  - Input: `C:/Downloader/data/input`
+  - Input: ZIP/XML files picked in the XML Parser card (Run All uses the dump output folder)
   - Output: `C:/Downloader/data/output`
   - Enriched: `C:/Downloader/data/enriched`
 

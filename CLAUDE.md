@@ -7,19 +7,34 @@ Downloader/
 ├── server_downloader.py      # Servidor Flask (porta 8765) — entry point principal
 ├── web-tool/                 # Frontend estático (index.html, app.js, file-viewer.js, styles.css)
 ├── dump_multiple_enms.py     # Script subprocess — dump ENM
-├── parquet_to_txt.py         # Script subprocess — converte parquet → txt
-├── xml_to_parquet.py         # Script subprocess — converte XML → parquet
-├── extract_dump.py           # Script subprocess — extrai ZIPs
+├── xml_to_txt.py             # Script subprocess — XML/ZIP → TXT por MO (lê ZIP direto, sem extrair)
 ├── post_process_4_camilo.py  # Script subprocess — enriquecimento LTE FDD
 ├── post_process_5_tdd.py     # Script subprocess — enriquecimento TDD/FDD
 ├── post_process_6_5g.py      # Script subprocess — enriquecimento 5G NR
-├── requirements.txt          # Dependências de desenvolvimento (inclui pyarrow, lxml, etc.)
+├── requirements.txt          # Dependências de desenvolvimento (inclui lxml, etc.)
 ├── requirements_build.txt    # Dependências do BUILD Nuitka (apenas o que o server usa)
 ├── build_nuitka.ps1          # Script de build Nuitka
 ├── venv/                     # venv de desenvolvimento (completa, com pyarrow/lxml/etc.)
 ├── venv_build/               # venv de build Nuitka (mínima — NÃO tem pyarrow/lxml)
 └── dist_nuitka/              # Output do build — Downloader.exe
 ```
+
+## Parser XML — por que é XML → TXT direto (sem Parquet)
+
+Antes era `extract_dump.py` (extrai ZIP) → `xml_to_parquet.py` → `parquet_to_txt.py`.
+O Parquet era só buffer temporário (apagado no fim) e o `parquet_to_txt` fazia
+`pd.concat` de todas as partes na memória — anulando o "streaming".
+
+Benchmark (dump real de 196 MB, 85 MOs): antigo 11,7 s / pico 590 MB;
+`xml_to_txt.py` 5,5 s / pico 215 MB, TXTs **idênticos byte a byte**
+(latin-1, CRLF, colunas na ordem de aparição). Também não precisa de pyarrow/pandas.
+
+- ZIPs são lidos no lugar (`zipfile` + `iterparse` no stream) — sem extrair para disco.
+- Memória limitada: acima de `_SPILL_ROWS` linhas, o buffer vai para um spool
+  (`.xml_to_txt_spool/`, `marshal`) e cada `<MO>.txt` é montado no final.
+- Ao ler uma pasta, um ZIP cujo XML já está extraído ao lado é ignorado (evita linhas duplicadas).
+- Se mexer no formato de saída, validar comparando SHA256 dos TXTs com a versão anterior:
+  os `post_process_*.py` dependem desse formato.
 
 ## Arquitetura: server vs subprocessos
 
