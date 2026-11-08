@@ -287,13 +287,17 @@ def process_enm(enm: dict, command_template: str, output_dir: str, mos_file_path
                 return f"OK {name_short}: No files"
 
             downloaded = 0
+            download_errors = 0
             for enm_file in download_resp.files():
                 try:
                     enm_file.download(output_dir)
                     downloaded += 1
                     print(f"[{name_short}] Downloaded file #{downloaded}.")
                 except Exception as e:
+                    download_errors += 1
                     print(f"[{name_short}] Download error: {e}")
+            if download_errors or downloaded == 0:
+                return f"ERROR {name_short}: {downloaded} file(s) downloaded, {download_errors} download failure(s)"
             print(f"[{name_short}] ENM processing completed successfully.")
             return f"OK {name_short}: Success ({downloaded} file(s) downloaded)"
 
@@ -385,6 +389,8 @@ def main():
     print("=" * 60)
     print("PARALLEL PROCESSING COMPLETED.")
     print("=" * 60)
+    if any(result.startswith("ERROR ") for result in results) or not any(": Success (" in result for result in results):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import shutil
+import threading
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -47,6 +48,8 @@ XML_TO_TXT_SCRIPT = os.path.join(SCRIPT_DIR, "xml_to_txt.py")
 POST_PROCESS_4_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_4_camilo.py")
 POST_PROCESS_5_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_5_tdd.py")
 POST_PROCESS_6_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_6_5g.py")
+WEEKLY_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "weekly_workflow.py")
+_workflow_lock = threading.Lock()
 # Default cellref path when using Downloader at C:\Downloader (e.g. portable)
 CELLREF_DEFAULT_PATH = "C:\\Downloader\\cellref"
 
@@ -87,6 +90,8 @@ app = Flask(__name__, static_folder=None)
 def _build_direct_network_env():
     """Return env without proxy variables for ENM direct access."""
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
     for key in (
         "HTTP_PROXY",
         "HTTPS_PROXY",
@@ -263,7 +268,7 @@ def _save_site_list_txt(path, rows):
             f.write("\t".join([regional, uf, municipio, site_id, tech]) + "\n")
 
 
-def _auto_build_site_list_from_dir(base_dir):
+def _auto_build_site_list_from_dir(base_dir, references_only=False):
     """
     Scan base_dir for xlsx/csv files, build and return site rows.
     Returns (rows, sources, warnings).
@@ -274,6 +279,7 @@ def _auto_build_site_list_from_dir(base_dir):
             os.path.join(base_dir, fn)
             for fn in os.listdir(base_dir)
             if os.path.splitext(fn)[1].lower() in table_exts
+            and (not references_only or fn.lower() in {"cellref.xlsx", "cellref_5g.xlsx"})
         ]
     except OSError:
         return [], [], [f"Cannot list directory: {base_dir}"]
@@ -376,23 +382,7 @@ def stream_run_dump(config):
                 yield f"Error: dump_multiple_enms.py not found.\n  SCRIPT_DIR: {SCRIPT_DIR}\n  DUMP_SCRIPT: {DUMP_SCRIPT}\n"
                 return
             python_exe = get_python_for_dump()
-            proc = subprocess.Popen(
-                [python_exe, DUMP_SCRIPT, path],
-                cwd=SCRIPT_DIR,
-                env=_build_direct_network_env(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                creationflags=_NO_WINDOW,
-            )
-            for line in proc.stdout:
-                yield line if line.endswith("\n") else line + "\n"
-            proc.wait()
-            if proc.returncode != 0:
-                yield f"\nProcess exited with code {proc.returncode}\n"
+            yield from _stream_checked_script(python_exe, DUMP_SCRIPT, [path])
         finally:
             try:
                 os.unlink(path)
@@ -413,11 +403,7 @@ def api_run_dump():
     config = request.get_json(force=True, silent=True)
     if not config:
         return Response("Invalid JSON body\n", status=400, mimetype="text/plain")
-    return Response(
-        stream_run_dump(config),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    return _workflow_response(stream_run_dump(config))
 
 
 @app.route("/api/update-site-list", methods=["POST", "OPTIONS"])
@@ -519,19 +505,21 @@ def api_load_site_list():
         return jsonify({"ok": False, "error": "base_dir is required."}), 400
 
     path = os.path.join(base_dir, "sites_list.txt")
+    refresh_references = data.get("refresh_from_references") is True
 
     # Try reading existing sites_list.txt
     rows = []
-    if os.path.isfile(path):
+    if os.path.isfile(path) and not refresh_references:
         try:
             rows = _read_site_list_txt(path)
         except OSError as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
     # If no real data found, try auto-building from xlsx/csv files in the same dir
-    if len(rows) < 5:
+    if len(rows) < 5 or refresh_references:
         try:
-            built_rows, sources, warnings = _auto_build_site_list_from_dir(base_dir)
+            official_refs = any(os.path.isfile(os.path.join(base_dir, name)) for name in ("cellref.xlsx", "cellref_5g.xlsx"))
+            built_rows, sources, warnings = _auto_build_site_list_from_dir(base_dir, references_only=refresh_references or official_refs)
         except Exception:
             built_rows = []
         if built_rows:
@@ -545,6 +533,8 @@ def api_load_site_list():
                 "rows": built_rows,
                 "count": len(built_rows),
                 "auto_built": True,
+                "sources": sources,
+                "warnings": warnings,
             })
         # No Excel files found either → return 404
         if not rows:
@@ -555,12 +545,20 @@ def api_load_site_list():
 
 def _stream_run_script(python_exe, script_path, args_list):
     """Run a Python script with args; yield stdout line by line."""
+    code = yield from _stream_checked_script(python_exe, script_path, args_list[1:])
+    if code:
+        raise RuntimeError(f"{os.path.basename(script_path)} exited with code {code}")
+
+
+def _stream_checked_script(python_exe, script_path, args):
+    """Stream logs and return the exit code; terminate children on disconnect."""
     if not os.path.isfile(script_path):
         yield f"Error: {os.path.basename(script_path)} not found.\n"
-        return
+        return 1
     proc = subprocess.Popen(
-        [python_exe] + args_list,
+        [python_exe, "-u", script_path] + args,
         cwd=SCRIPT_DIR,
+        env=_build_direct_network_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -569,11 +567,140 @@ def _stream_run_script(python_exe, script_path, args_list):
         bufsize=1,
         creationflags=_NO_WINDOW,
     )
-    for line in proc.stdout:
-        yield line if line.endswith("\n") else line + "\n"
-    proc.wait()
-    if proc.returncode != 0:
-        yield f"\nProcess exited with code {proc.returncode}\n"
+    try:
+        processing_error = False
+        for line in proc.stdout:
+            if script_path in (XML_TO_TXT_SCRIPT, POST_PROCESS_4_SCRIPT, POST_PROCESS_5_SCRIPT, POST_PROCESS_6_SCRIPT):
+                if re.search(r"(?:^\s*ERROR\b|:\s*(?:ERROR|FAILED)\b)", line, re.I):
+                    processing_error = True
+            yield line if line.endswith("\n") else line + "\n"
+        proc.wait()
+        if proc.returncode:
+            yield f"\nProcess exited with code {proc.returncode}\n"
+        if processing_error and not proc.returncode:
+            yield "\nERROR: Script reported a processing failure.\n"
+            return 1
+        return proc.returncode
+    finally:
+        if proc.poll() is None:
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                               capture_output=True, creationflags=_NO_WINDOW)
+            else:
+                proc.terminate()
+            proc.wait()
+        proc.stdout.close()
+
+
+def stream_weekly_workflow(data):
+    """Preflight, optional ENM extraction, then notebooks 2 through 6."""
+    path = None
+    try:
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="weekly_workflow_")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            # Never write ENM passwords into retained workflow manifests.
+            json.dump({key: value for key, value in data.items() if key != "dump_config"}, handle)
+        python_exe = get_python_for_dump()
+        yield "STEP 0/6: Checking notebooks, references and dependencies...\n"
+        check_lines, code = _run_step(python_exe, WEEKLY_WORKFLOW_SCRIPT, [path, "--check"])
+        for line in check_lines:
+            yield line
+        if code:
+            raise RuntimeError("Preflight failed. ENM dump was not started.")
+        dump_config = data.get("dump_config")
+        if dump_config:
+            dump_config = dict(dump_config)
+            required_line = next(line for line in check_lines if line.startswith("REQUIRED_MOS="))
+            required = json.loads(required_line.split("=", 1)[1])
+            selected = dump_config.get("selected_mos") or []
+            dump_config["selected_mos"] = list(dict.fromkeys(selected + required))
+            yield f"\nSTEP 1/6: ENM dump ({len(dump_config['selected_mos'])} MOs, including notebook lookups)...\n"
+            fd, dump_path = tempfile.mkstemp(suffix=".json", prefix="weekly_dump_")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(dump_config, handle)
+                code = yield from _stream_checked_script(python_exe, DUMP_SCRIPT, [dump_path])
+                if code:
+                    raise RuntimeError("ENM dump failed. Notebook processing was not started.")
+            finally:
+                os.unlink(dump_path)
+        code = yield from _stream_checked_script(python_exe, WEEKLY_WORKFLOW_SCRIPT, [path])
+        if code:
+            raise RuntimeError("Notebook processing failed. Check the cell and manifest above.")
+    except Exception as exc:
+        yield f"\nERROR: {exc}\nPIPELINE FAILED.\n"
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
+
+
+def _workflow_response(iterator):
+    if not _workflow_lock.acquire(blocking=False):
+        return Response("Another workflow is already running.\n", status=409, mimetype="text/plain")
+
+    released = False
+    release_guard = threading.Lock()
+
+    def release_once():
+        nonlocal released
+        with release_guard:
+            if not released:
+                released = True
+                _workflow_lock.release()
+
+    def stream():
+        try:
+            yield from iterator
+        except Exception as exc:
+            yield f"\nERROR: {exc}\nPIPELINE FAILED.\n"
+        finally:
+            release_once()
+
+    response = Response(stream(), mimetype="text/plain", headers={"X-Content-Type-Options": "nosniff"})
+    response.call_on_close(release_once)
+    return response
+
+
+@app.route("/api/run-weekly-workflow", methods=["POST", "OPTIONS"])
+def api_run_weekly_workflow():
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(force=True, silent=True) or {}
+    dump_config = data.get("dump_config")
+    if dump_config:
+        if not isinstance(dump_config, dict) or not dump_config.get("output_dir"):
+            return Response("dump_config.output_dir required\n", status=400)
+        data["input_dir"] = dump_config["output_dir"]
+        data["dump_output_dir"] = dump_config["output_dir"]
+        data.pop("input_files", None)
+    if not data.get("input_dir") and not data.get("input_files"):
+        return Response("input_dir or input_files required\n", status=400)
+    for key in ("create_weekly", "transfer_vivo"):
+        if key in data and not isinstance(data[key], bool):
+            return Response(f"{key} must be a boolean\n", status=400)
+    return _workflow_response(stream_weekly_workflow(data))
+
+
+@app.route("/api/run-cellref", methods=["POST", "OPTIONS"])
+def api_run_cellref():
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(force=True, silent=True) or {}
+    if not all(str(data.get(key) or "").strip() for key in ("reference_dir", "output_dir", "enriched_dir")):
+        return Response("reference_dir, output_dir and enriched_dir required\n", status=400)
+
+    def stream():
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="cellref_config_")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            code = yield from _stream_checked_script(get_python_for_dump(), WEEKLY_WORKFLOW_SCRIPT, [path, "--cellref-only"])
+            if code:
+                yield "\nPIPELINE FAILED.\n"
+        finally:
+            os.unlink(path)
+
+    return _workflow_response(stream())
 
 
 @app.route("/api/run-post-process-4", methods=["POST", "OPTIONS"])
@@ -588,11 +715,7 @@ def api_run_post_process_4():
         return Response("input_txt_dir required\n", status=400, mimetype="text/plain")
     python_exe = get_python_for_dump()
     args_list = [POST_PROCESS_4_SCRIPT, input_dir, cellref_dir, output_dir]
-    return Response(
-        _stream_run_script(python_exe, POST_PROCESS_4_SCRIPT, args_list),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    return _workflow_response(_stream_run_script(python_exe, POST_PROCESS_4_SCRIPT, args_list))
 
 
 @app.route("/api/run-post-process-5", methods=["POST", "OPTIONS"])
@@ -606,11 +729,7 @@ def api_run_post_process_5():
         return Response("input_txt_dir required\n", status=400, mimetype="text/plain")
     python_exe = get_python_for_dump()
     args_list = [POST_PROCESS_5_SCRIPT, input_dir, output_dir]
-    return Response(
-        _stream_run_script(python_exe, POST_PROCESS_5_SCRIPT, args_list),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    return _workflow_response(_stream_run_script(python_exe, POST_PROCESS_5_SCRIPT, args_list))
 
 
 @app.route("/api/run-post-process-6", methods=["POST", "OPTIONS"])
@@ -624,11 +743,7 @@ def api_run_post_process_6():
         return Response("input_txt_dir required\n", status=400, mimetype="text/plain")
     python_exe = get_python_for_dump()
     args_list = [POST_PROCESS_6_SCRIPT, input_dir, output_dir]
-    return Response(
-        _stream_run_script(python_exe, POST_PROCESS_6_SCRIPT, args_list),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
-    )
+    return _workflow_response(_stream_run_script(python_exe, POST_PROCESS_6_SCRIPT, args_list))
 
 
 def _run_step(python_exe, script, args):
@@ -772,10 +887,8 @@ def api_run_parser_pipeline():
         return Response("input_dir or input_files required\n", status=400, mimetype="text/plain")
     if not output_dir:
         return Response("output_dir required\n", status=400, mimetype="text/plain")
-    return Response(
-        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files),
-        mimetype="text/plain",
-        headers={"X-Content-Type-Options": "nosniff"},
+    return _workflow_response(
+        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files)
     )
 
 

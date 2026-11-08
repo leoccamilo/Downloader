@@ -24,12 +24,17 @@
         </button>
       </li>
       <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-cellref-btn" data-bs-toggle="tab" data-bs-target="#tab-cellref" type="button">
+          <i class="bi bi-geo-alt"></i> Cellrefs
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
         <button class="nav-link" id="tab-viewer-btn" data-bs-toggle="tab" data-bs-target="#tab-file-viewer" type="button">
           <i class="bi bi-file-earmark-spreadsheet"></i> File Viewer
         </button>
       </li>
       <li class="nav-item ms-auto me-2 d-flex align-items-center" role="presentation">
-        <button class="btn btn-run-all btn-sm" type="button" id="btn-run-all" title="Execute Dump + XML Parser in sequence">
+        <button class="btn btn-run-all btn-sm" type="button" id="btn-run-all" title="Execute Dump + complete audit workflow in sequence">
           <i class="bi bi-rocket-takeoff"></i> Run All
         </button>
       </li>
@@ -122,26 +127,27 @@
               </div>
 
               <!-- Site list: update from folder or load existing file -->
-              <div class="card card-compact mb-3">
+              <div class="card card-compact mb-3" id="shared-references-card">
                 <div class="card-header bg-secondary text-white">
-                  <i class="bi bi-geo-alt"></i> Site List
+                  <i class="bi bi-geo-alt"></i> Referências 4G / 5G e lista de sites
                 </div>
                 <div class="card-body">
-                  <label class="form-label fw-bold small">Update site list</label>
-                  <p class="form-text small text-muted mb-1">Select one or more source files (CSV/TXT/XLSX/XLS). The tool detects 4G/5G automatically, merges LTE + NR, and saves <code>sites_list.txt</code> in the directory below.</p>
+                  <label class="form-label fw-bold small" for="site-list-folder-path">Pasta única das referências</label>
+                  <p class="form-text small text-muted mb-1">Mantenha <code>cellref.xlsx</code> e <code>cellref_5g.xlsx</code> nesta pasta. Ela é usada pela lista de sites, pela geração de cellrefs e pelos relatórios.</p>
                   <div class="input-group input-group-sm mb-2">
-                    <span class="input-group-text">Base dir</span>
-                    <input type="text" class="form-control font-monospace" id="site-list-folder-path" placeholder="e.g. C:/Downloader/cellref">
+                    <input type="text" class="form-control font-monospace" id="site-list-folder-path" value="C:/Camilo" placeholder="C:/Camilo">
                     <input type="file" id="folder-picker-site-list-base" webkitdirectory directory style="display:none">
-                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-site-list-base" title="Browse for base directory">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-site-list-base" title="Escolher pasta das referências">
                       <i class="bi bi-folder2-open"></i>
                     </button>
-                    <input type="file" id="site-list-folder-input" multiple accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
-                    <button class="btn btn-primary" type="button" id="btn-update-site-list">
-                      <i class="bi bi-folder2-open"></i> Select files and update
+                    <button class="btn btn-primary" type="button" id="btn-refresh-references">
+                      <i class="bi bi-arrow-repeat"></i> Atualizar lista desta pasta
                     </button>
                   </div>
-                  <hr class="my-2">
+                  <details class="mt-2">
+                  <summary class="small">Importar uma lista de sites manualmente (opcional)</summary>
+                  <input type="file" id="site-list-folder-input" multiple accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+                  <button class="btn btn-outline-primary btn-sm my-2" type="button" id="btn-update-site-list"><i class="bi bi-upload"></i> Select files and update</button>
                   <label class="form-label fw-bold small">Or load existing site list file</label>
                   <div class="input-group input-group-sm">
                     <input type="file" class="form-control" id="site-list-file" accept=".txt,.csv,text/plain,text/csv">
@@ -149,6 +155,7 @@
                       <i class="bi bi-upload"></i> Load
                     </button>
                   </div>
+                  </details>
                   <p class="small mb-0 mt-1" id="site-list-status"><span class="text-muted">No site list loaded.</span></p>
                 </div>
               </div>
@@ -309,7 +316,7 @@
                   <i class="bi bi-file-code"></i> XML Parser
                 </div>
                 <div class="card-body">
-                  <p class="text-muted small mb-2">Pick dump files — ZIPs are read directly, no extraction needed. Parses 3GPP XML to Parquet, converts to TXT and removes Parquets.</p>
+                  <p class="text-muted small mb-2">Run All downloads the ENM dumps and runs the complete audit workflow below. Run Parser uses the selected ZIP / XML files.</p>
                   <div class="mb-3">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                       <label class="form-label fw-bold small mb-0">Input Files (ZIP / XML)</label>
@@ -334,6 +341,40 @@
                     </div>
                   </div>
                   <hr class="my-2">
+                  <div class="border rounded p-2 mb-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="chk-weekly-workflow" checked>
+                      <label class="form-check-label fw-bold small" for="chk-weekly-workflow">Rotina completa dos notebooks (2 a 6)</label>
+                    </div>
+                    <p class="text-muted small ms-4 mb-2">Parser, relatórios LTE, Camilo, TDD e 5G, na mesma sequência da rotina de segunda-feira.</p>
+                    <div id="weekly-options-group">
+                      <label class="form-label small mb-1" for="weekly-notebook-dir">Pasta dos notebooks</label>
+                      <div class="input-group input-group-sm mb-2">
+                        <input class="form-control" id="weekly-notebook-dir" value="C:/Users/leocc/Novos_Audits">
+                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-weekly-notebooks" title="Escolher pasta"><i class="bi bi-folder2-open"></i></button>
+                      </div>
+                      <p class="text-muted small mb-2">As referências vêm da pasta selecionada em <strong>Referências 4G / 5G e lista de sites</strong>. Configure a geração na aba <strong>Cellrefs</strong>.</p>
+                      <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="chk-create-weekly" checked>
+                        <label class="form-check-label small" for="chk-create-weekly">Criar arquivos semanais (_número da semana)</label>
+                      </div>
+                      <div class="input-group input-group-sm mb-2">
+                        <input class="form-control" id="weekly-history-dir" value="C:/Camilo" aria-label="Pasta do histórico semanal">
+                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-weekly-history" title="Escolher pasta"><i class="bi bi-folder2-open"></i></button>
+                      </div>
+                      <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="chk-transfer-vivo" checked>
+                        <label class="form-check-label small" for="chk-transfer-vivo">Transferir relatórios para a pasta Vivo</label>
+                      </div>
+                      <div class="input-group input-group-sm mb-2">
+                        <input class="form-control" id="weekly-vivo-dir" value="C:/Vivo Reports" aria-label="Pasta de relatórios Vivo">
+                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-weekly-vivo" title="Escolher pasta"><i class="bi bi-folder2-open"></i></button>
+                      </div>
+                      <p class="text-muted small mb-2">Transferência opcional. Na Claro, desmarque esta opção: os resultados continuam nas pastas de saída e histórico escolhidas.</p>
+                      <p class="text-muted small mb-0">Mantém a numeração dos notebooks (%U + 1) e as subpastas LTE, 5G e MoB_IMP. Nova execução na mesma semana atualiza os mesmos arquivos.</p>
+                    </div>
+                  </div>
+                  <div id="legacy-enrichment-group">
                   <div class="mb-3">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" id="chk-customize-txts">
@@ -341,17 +382,10 @@
                     </div>
                     <p class="text-muted small mb-0 ms-4">Run enrichment scripts (LTE FDD, TDD, 5G) using <code>cellref.xlsx</code>. Enriched files are saved to a separate directory.</p>
                   </div>
+                  </div>
                   <div id="enrich-options-group" style="display:none;">
                     <div class="mb-3">
-                      <label class="form-label fw-bold small">Cellref Directory (cellref.xlsx)</label>
-                      <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" id="parser-cellref-dir" value="C:/Downloader/cellref">
-                        <input type="file" id="folder-picker-parser-cellref" webkitdirectory directory style="display:none">
-                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-cellref" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
-                      </div>
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label fw-bold small">Enriched Files Directory</label>
+                      <label class="form-label fw-bold small">Enriched Files Directory (relatórios atuais)</label>
                       <div class="input-group input-group-sm">
                         <input type="text" class="form-control" id="parser-enriched-dir" value="C:/Downloader/data/enriched">
                         <input type="file" id="folder-picker-parser-enriched" webkitdirectory directory style="display:none">
@@ -370,6 +404,44 @@
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="tab-cellref" role="tabpanel">
+        <div class="container-fluid py-2">
+          <div class="card card-compact mb-3">
+            <div class="card-header bg-primary text-white"><i class="bi bi-geo-alt"></i> Atualização semanal dos cellrefs</div>
+            <div class="card-body">
+              <p class="small mb-2">Coloque os arquivos baixados do portal nas pastas de entrada abaixo. O Downloader executa <strong>LTE v2 → 5G v3 → passos 4 e 5</strong>, salva os cellrefs na pasta única de referências e atualiza a lista de sites. Usa o <strong>4_MOs_Camilo corrigido</strong> para preservar o site físico da célula em Hotel de BTS.</p>
+              <p class="small mb-2">Destino das referências: <code id="cellref-shared-folder">C:/Camilo</code> <button type="button" class="btn btn-link btn-sm p-0 ms-2" id="btn-cellref-reference-settings">Alterar na aba ENM Dump</button></p>
+              <div class="row g-3">
+                <div class="col-lg-6">
+                  <label class="form-label small fw-bold" for="cellref-lte-input-dir">Arquivos LTE baixados do portal (.xlsx)</label>
+                  <div class="input-group input-group-sm mb-3"><input class="form-control" id="cellref-lte-input-dir" value="C:/Cellref/LTE_dump"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-lte" title="Escolher pasta LTE"><i class="bi bi-folder2-open"></i></button></div>
+                  <label class="form-label small fw-bold" for="cellref-nr-input-dir">Arquivos 5G baixados do portal (.xlsx)</label>
+                  <div class="input-group input-group-sm mb-3"><input class="form-control" id="cellref-nr-input-dir" value="C:/Cellref/NR_dump"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-nr" title="Escolher pasta 5G"><i class="bi bi-folder2-open"></i></button></div>
+                  <p class="text-muted small">São lidos os arquivos XLSX dessas pastas, com cabeçalho na terceira linha. Mantenha somente os downloads da execução desejada. O acesso ao portal continua manual.</p>
+                </div>
+                <div class="col-lg-6">
+                  <label class="form-label small fw-bold" for="cellref-scripts-dir">Pasta dos scripts de geração</label>
+                  <div class="input-group input-group-sm mb-2"><input class="form-control" id="cellref-scripts-dir" value="C:/Cellref/scripts"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-scripts" title="Escolher pasta dos scripts"><i class="bi bi-folder2-open"></i></button></div>
+                  <p class="small text-muted"><code>cellref_LTE_v2.ipynb</code> e <code>CellRef_5G_v3.ipynb</code>. Os originais são preservados.</p>
+                  <label class="form-label small fw-bold" for="cellref-parameter-dir">Relatórios ENM existentes (para executar somente esta aba)</label>
+                  <div class="input-group input-group-sm mb-2"><input class="form-control" id="cellref-parameter-dir" value="C:/Camilo"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-parameters" title="Escolher pasta dos parâmetros ENM"><i class="bi bi-folder2-open"></i></button></div>
+                  <p class="text-muted small">EUtranCell_TDD_FDD e relatórios 5G atuais. Os MOs processados vêm de Output Directory da aba ENM Dump. No Run All, são usados os parâmetros do novo dump.</p>
+                </div>
+              </div>
+              <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="chk-cellref-run-all" checked><label class="form-check-label small fw-bold" for="chk-cellref-run-all">Incluir geração dos cellrefs Vivo no Run All</label></div>
+              <p class="text-muted small ms-4">Dump e relatórios → novos cellrefs LTE/5G → reaplicação dos passos 4 e 5. Os resultados são publicados após sucesso de todo o processamento.</p>
+              <p class="text-muted small ms-4">Os cellrefs gerados refletem o escopo dos parâmetros ENM. Para a atualização semanal completa, use o escopo completo da sua rotina.</p>
+              <p class="text-muted small ms-4">Para usar na Claro com referências já prontas, desmarque a geração Vivo e a transferência para a pasta Vivo.</p>
+              <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="chk-cellref-refresh-reports" checked><label class="form-check-label small" for="chk-cellref-refresh-reports">Reaplicar os passos 4 e 5 ao executar somente esta aba</label></div>
+              <button class="btn btn-primary btn-sm" type="button" id="btn-run-cellref"><i class="bi bi-play-fill"></i> Gerar cellrefs e atualizar</button>
+              <button class="btn btn-outline-secondary btn-sm ms-1" type="button" id="btn-cancel-cellref" disabled><i class="bi bi-stop-fill"></i> Cancelar</button>
+              <p class="small mt-2 mb-1" id="cellref-status">Aguardando execução.</p>
+              <textarea class="form-control font-monospace small" id="cellref-log" rows="16" readonly placeholder="O progresso da geração e da atualização aparecerá aqui."></textarea>
             </div>
           </div>
         </div>

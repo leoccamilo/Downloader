@@ -1,6 +1,37 @@
 ﻿# Alterações Realizadas
 
-Data de referência: 2026-03-02
+## 2026-11-08 — Rotina semanal completa
+
+- Pasta única das referências no primeiro cartão da aba ENM Dump; removidos
+  os seletores duplicados do parser. A lista de sites pode ser reconstruída
+  somente de `cellref.xlsx` e `cellref_5g.xlsx`, ignorando históricos.
+- Nova aba Cellrefs: leitura dos downloads manuais LTE/NR, execução do LTE v2
+  e 5G v3, publicação na pasta compartilhada e reaplicação dos passos 4/5.
+- Run All pode encadear a geração dos cellrefs após os parâmetros ENM. A
+  atualização isolada pode reutilizar os MOs brutos retidos em `.refresh_inputs`.
+- Notebook 4 atualizado para `4_MOs_Camilo.ipynb`, respeitando o site físico
+  da célula em Hotel de BTS. SCIENCE pode ser derivado do cellref LTE quando ausente.
+- Validação de cabeçalhos, mistura de semanas, preservação do TDD e cobertura
+  de coordenadas. Originais e destinos de produção preservados nos testes.
+
+- Novo executor `weekly_workflow.py`: execução encadeada dos notebooks 2–6,
+  preservando os originais de `C:/Users/leocc/Novos_Audits` e as referências
+  `cellref.xlsx`/`SCIENCE.xlsx` de `C:/Camilo`.
+- Run All oferece dump + rotina completa em um único job, com verificação
+  prévia das fontes e inclusão dos MOs auxiliares necessários.
+- Opções independentes e persistentes para histórico semanal em `C:/Camilo`
+  e relatórios em `C:/Vivo Reports`, com destinos configuráveis.
+- Execuções isoladas e manifesto com hashes dos notebooks, semana, avisos e
+  arquivos publicados. A publicação começa após sucesso do processamento.
+- Tratamento de recortes pequenos, variantes de IDs, atributos opcionais,
+  regex com Arrow e inventário FDD quando o escopo não contém TDD.
+- Falhas de ENM retornam código de erro; a interface deixa de tratar falhas
+  do parser como conclusão com sucesso. Controle de concorrência e encerramento
+  dos subprocessos quando o stream é interrompido.
+- Dependência `pyarrow`, inclusão do executor no build e testes do fluxo,
+  das opções de saída e da preservação de resultados quando há falhas.
+
+Data de referência do histórico abaixo: 2026-03-02
 
 ## 1) Dependências Python / ambiente
 - Tentativa de instalação do pacote Ericsson informada pelo usuário:

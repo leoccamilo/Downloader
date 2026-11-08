@@ -16,6 +16,7 @@ const STORAGE_PARSER_CELLREF = 'downloader_parser_cellref_dir';
 const STORAGE_PARSER_ENRICHED = 'downloader_parser_enriched_dir';
 const STORAGE_FILE_VIEWER_OUTPUT = 'downloader_file_viewer_output_dir';
 const STORAGE_CUSTOMIZE_TXTS = 'downloader_customize_txts';
+const WORKFLOW_API_BASE = window.location.protocol === 'http:' ? window.location.origin : 'http://127.0.0.1:8765';
 const STORAGE_EXPORT_SL_DIR  = 'downloader_export_sl_dir';
 const STORAGE_EXPORT_SL_NAME = 'downloader_export_sl_name';
 
@@ -228,7 +229,7 @@ function getSiteListSaveDir() {
   const configured = (document.getElementById('site-list-folder-path') && document.getElementById('site-list-folder-path').value || '').trim();
   // Ignore old UI summary text from previous versions.
   if (configured && !/files selected\s*\(/i.test(configured)) return configured;
-  return 'C:/Downloader/cellref';
+  return 'C:/Camilo';
 }
 
 function dirnamePath(p) {
@@ -281,14 +282,14 @@ async function saveSiteListToServer(rows) {
   return response.json();
 }
 
-async function tryAutoLoadSiteListFromBaseDir(silentIfMissing = true) {
+async function tryAutoLoadSiteListFromBaseDir(silentIfMissing = true, refreshReferences = false) {
   const baseDir = getSiteListSaveDir();
   if (!baseDir) return false;
   try {
-    const response = await fetch('http://127.0.0.1:8765/api/load-site-list', {
+    const response = await fetch(WORKFLOW_API_BASE + '/api/load-site-list', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_dir: baseDir })
+      body: JSON.stringify({ base_dir: baseDir, refresh_from_references: refreshReferences })
     });
     if (!response.ok) {
       if (!silentIfMissing) {
@@ -298,6 +299,7 @@ async function tryAutoLoadSiteListFromBaseDir(silentIfMissing = true) {
       return false;
     }
     const data = await response.json();
+    if (baseDir !== getSiteListSaveDir()) return false;
     if (!data || !data.ok || !Array.isArray(data.rows)) return false;
     siteListData = dedupeAndSortSiteRows(data.rows);
     siteListLoadedFromFile = siteListData.length > 0;
@@ -1722,7 +1724,7 @@ function bindPathStorage(inputId, storageKey) {
 function getParserPayload(overrideInputDir) {
   const outputDir = document.getElementById('parser-output-dir').value.trim();
   const customizeTxts = document.getElementById('chk-customize-txts').checked;
-  const cellrefDir = (document.getElementById('parser-cellref-dir') || {}).value || 'C:/Downloader/cellref';
+  const cellrefDir = getSiteListSaveDir();
   const enrichedDir = (document.getElementById('parser-enriched-dir') || {}).value || 'C:/Downloader/data/enriched';
   const payload = {
     output_dir: outputDir || overrideInputDir || '',
@@ -1730,9 +1732,98 @@ function getParserPayload(overrideInputDir) {
     cellref_dir: cellrefDir.trim(),
     enriched_dir: enrichedDir.trim()
   };
+  payload.weekly_workflow = document.getElementById('chk-weekly-workflow').checked;
+  if (payload.weekly_workflow) {
+    payload.notebook_dir = document.getElementById('weekly-notebook-dir').value.trim();
+    payload.reference_dir = cellrefDir;
+    payload.create_weekly = document.getElementById('chk-create-weekly').checked;
+    payload.history_dir = document.getElementById('weekly-history-dir').value.trim();
+    payload.transfer_vivo = document.getElementById('chk-transfer-vivo').checked;
+    payload.vivo_dir = payload.transfer_vivo ? document.getElementById('weekly-vivo-dir').value.trim() : '';
+    payload.cellref = getCellrefOptions();
+  }
   if (overrideInputDir) payload.input_dir = overrideInputDir;
   else payload.input_files = _parserFiles.map(f => f.path);
   return payload;
+}
+
+function getCellrefOptions() {
+  return {
+    enabled: document.getElementById('chk-cellref-run-all').checked,
+    scripts_dir: document.getElementById('cellref-scripts-dir').value.trim(),
+    lte_input_dir: document.getElementById('cellref-lte-input-dir').value.trim(),
+    nr_input_dir: document.getElementById('cellref-nr-input-dir').value.trim(),
+    parameter_dir: document.getElementById('cellref-parameter-dir').value.trim(),
+    refresh_reports: document.getElementById('chk-cellref-refresh-reports').checked
+  };
+}
+
+function updateSharedReferenceSummary() {
+  document.getElementById('cellref-shared-folder').textContent = getSiteListSaveDir();
+}
+
+async function refreshSharedReferences(resetScope = false) {
+  updateSharedReferenceSummary();
+  siteListData = [];
+  if (resetScope === true) selectedMunicipalities = [];
+  siteListLoadedFromFile = false;
+  refreshScopeUfControls();
+  const button = document.getElementById('btn-refresh-references');
+  button.disabled = true;
+  document.getElementById('site-list-status').textContent = 'Lendo os cellrefs 4G / 5G da pasta selecionada...';
+  try {
+    const loaded = await tryAutoLoadSiteListFromBaseDir(false, true);
+    if (!loaded) document.getElementById('site-list-status').textContent = 'Não foi possível gerar a lista. Confira cellref.xlsx e cellref_5g.xlsx nesta pasta.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+let _cellrefAbort = null;
+async function runCellrefs() {
+  const payload = getParserPayload();
+  payload.reference_dir = getSiteListSaveDir();
+  payload.notebook_dir = document.getElementById('weekly-notebook-dir').value.trim();
+  payload.cellref = getCellrefOptions();
+  payload.cellref.enabled = true;
+  payload.create_weekly = document.getElementById('chk-create-weekly').checked;
+  payload.history_dir = document.getElementById('weekly-history-dir').value.trim();
+  payload.transfer_vivo = document.getElementById('chk-transfer-vivo').checked;
+  payload.vivo_dir = payload.transfer_vivo ? document.getElementById('weekly-vivo-dir').value.trim() : '';
+  const log = document.getElementById('cellref-log');
+  const status = document.getElementById('cellref-status');
+  const button = document.getElementById('btn-run-cellref');
+  const cancel = document.getElementById('btn-cancel-cellref');
+  _cellrefAbort = new AbortController();
+  button.disabled = true;
+  cancel.disabled = false;
+  status.textContent = 'Processando os cellrefs...';
+  log.value = '';
+  try {
+    const response = await fetch(WORKFLOW_API_BASE + '/api/run-cellref', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), signal: _cellrefAbort.signal
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      log.value += decoder.decode(value, {stream: true});
+      log.scrollTop = log.scrollHeight;
+    }
+    log.value += decoder.decode();
+    if (!_pipelineSucceeded(log.value)) throw new Error('A geração falhou. Consulte a etapa/célula indicada no log.');
+    status.textContent = /^WARNING:/m.test(log.value) ? 'Concluído com avisos. Confira o log.' : 'Cellrefs atualizados com sucesso.';
+    await refreshSharedReferences();
+  } catch (error) {
+    status.textContent = error.name === 'AbortError' ? 'Execução cancelada.' : 'Falha na atualização.';
+    log.value += '\n' + (error.name === 'AbortError' ? 'Cancelado pelo usuário.' : error.message) + '\n';
+  } finally {
+    _cellrefAbort = null;
+    button.disabled = false;
+    cancel.disabled = true;
+  }
 }
 
 /** Run full parser pipeline via streaming API. */
@@ -1740,6 +1831,7 @@ let _runParserAbort = null;
 
 async function runParserPipeline() {
   const payload = getParserPayload();
+  if (payload.cellref) payload.cellref.enabled = false; // Generation is selected separately in Run All / Cellrefs.
   const resultEl = document.getElementById('parser-result');
   const logArea = document.getElementById('parser-log-area');
   const btnCancel = document.getElementById('btn-run-parser-cancel');
@@ -1765,7 +1857,8 @@ async function runParserPipeline() {
   _runParserAbort = controller;
 
   try {
-    const response = await fetch('http://127.0.0.1:8765/api/run-parser-pipeline', {
+    const endpoint = payload.weekly_workflow ? '/api/run-weekly-workflow' : '/api/run-parser-pipeline';
+    const response = await fetch(WORKFLOW_API_BASE + endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1794,6 +1887,7 @@ async function runParserPipeline() {
     }
     if (buffer.trim()) logArea.value += buffer + '\n';
     logArea.scrollTop = logArea.scrollHeight;
+    if (!_pipelineSucceeded(logArea.value)) logArea.value += '\nProcessing failed. Check the log above.\n';
 
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -1948,7 +2042,13 @@ async function _streamToLog(logEl, phaseEl, url, body, phaseName) {
 function _dumpPhaseSucceeded(content) {
   if (!content) return false;
   if (/Process exited with code [1-9]\d*/.test(content)) return false;
+  if (/^ERROR\s+/m.test(content)) return false;
   return /OK\s+\w+:\s*Success/i.test(content);
+}
+
+function _pipelineSucceeded(content) {
+  return /PIPELINE COMPLETED\./.test(content || '') &&
+    !/PIPELINE FAILED\.|Process exited with code [1-9]\d*|Traceback \(most recent call last\)|^\s*(?:ERROR\b|[^\n:]+:\s*(?:ERROR|FAILED)\b)/m.test(content);
 }
 
 async function runAll() {
@@ -2000,27 +2100,39 @@ async function runAll() {
   }
 
   try {
-    // Phase 1: Dump
     const config = getExportConfig();
-    const phase1Result = await _streamToLog(logEl, phaseEl, 'http://127.0.0.1:8765/api/run-dump', config, 'Phase 1: ENM Dump');
-
-    if (!_dumpPhaseSucceeded(phase1Result.content)) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      logEl.value += `\n[${new Date().toLocaleTimeString()}] Run All STOPPED: Phase 1 (ENM Dump) failed. Fix the dump error above and try again.\n`;
-      if (phaseEl) phaseEl.textContent = 'Dump failed';
-      if (statusEl) statusEl.textContent = `Dump failed (${elapsed}s). Parser skipped.`;
-      return;
-    }
-
-    // Phase 2: Parser Pipeline (only runs if Phase 1 succeeded)
     const parserPayload = getParserPayload(outputDir);
-    await _streamToLog(logEl, phaseEl, 'http://127.0.0.1:8765/api/run-parser-pipeline',
-      parserPayload, 'Phase 2: XML Parser + TXT');
+    let completedWithWarnings = false;
+    if (parserPayload.weekly_workflow) {
+      // A single server job owns preflight, extraction and notebook processing.
+      parserPayload.dump_config = config;
+      const result = await _streamToLog(logEl, phaseEl, WORKFLOW_API_BASE + '/api/run-weekly-workflow',
+        parserPayload, 'ENM Dump + notebooks 2 a 6');
+      if (!_pipelineSucceeded(result.content)) throw new Error('A rotina falhou. Consulte a etapa e a célula indicadas no log.');
+      completedWithWarnings = /^WARNING:/m.test(result.content);
+      if (parserPayload.cellref.enabled) await refreshSharedReferences();
+    } else {
+      // Phase 1: Dump
+      const phase1Result = await _streamToLog(logEl, phaseEl, WORKFLOW_API_BASE + '/api/run-dump', config, 'Phase 1: ENM Dump');
+
+      if (!_dumpPhaseSucceeded(phase1Result.content)) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        logEl.value += `\n[${new Date().toLocaleTimeString()}] Run All STOPPED: Phase 1 (ENM Dump) failed. Fix the dump error above and try again.\n`;
+        if (phaseEl) phaseEl.textContent = 'Dump failed';
+        if (statusEl) statusEl.textContent = `Dump failed (${elapsed}s). Parser skipped.`;
+        return;
+      }
+
+      // Phase 2: Parser Pipeline (only runs if Phase 1 succeeded)
+      const phase2Result = await _streamToLog(logEl, phaseEl, WORKFLOW_API_BASE + '/api/run-parser-pipeline',
+        parserPayload, 'Phase 2: XML Parser + TXT');
+      if (!_pipelineSucceeded(phase2Result.content)) throw new Error('Parser processing failed. Check the log above.');
+    }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
     logEl.value += `\n[${new Date().toLocaleTimeString()}] Run All COMPLETED in ${elapsed}s.\n`;
-    if (phaseEl) phaseEl.textContent = 'Completed';
-    if (statusEl) statusEl.textContent = `Completed in ${elapsed}s.`;
+    if (phaseEl) phaseEl.textContent = completedWithWarnings ? 'Completed with warnings' : 'Completed';
+    if (statusEl) statusEl.textContent = completedWithWarnings ? `Completed in ${elapsed}s. Review warnings in the log.` : `Completed in ${elapsed}s.`;
 
   } catch (err) {
     if (err.name === 'AbortError') return;
@@ -2059,11 +2171,16 @@ function init() {
   const folderPathEl = document.getElementById('site-list-folder-path');
   if (folderPathEl) {
     bindPathStorage('site-list-folder-path', STORAGE_SITE_LIST_SAVE_DIR);
-    if (!folderPathEl.value.trim()) {
-      folderPathEl.value = 'C:/Downloader/cellref';
-    }
-    folderPathEl.addEventListener('change', () => { tryAutoLoadSiteListFromBaseDir(true); });
-    folderPathEl.addEventListener('blur', () => { tryAutoLoadSiteListFromBaseDir(true); });
+    try {
+      const saved = localStorage.getItem(STORAGE_SITE_LIST_SAVE_DIR);
+      const dumpDir = localStorage.getItem(STORAGE_LAST_OUTPUT_DIR) || document.getElementById('enm-output-dir').value;
+      const normalized = value => String(value || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+      if (!saved || normalized(saved) === normalized(dumpDir)) {
+        folderPathEl.value = localStorage.getItem('downloader_weekly_references') || 'C:/Camilo';
+        localStorage.setItem(STORAGE_SITE_LIST_SAVE_DIR, folderPathEl.value);
+      }
+    } catch (_) {}
+    folderPathEl.addEventListener('change', () => refreshSharedReferences(true));
   }
   const btnBrowseSiteListBase = document.getElementById('btn-browse-site-list-base');
   if (btnBrowseSiteListBase && folderPathEl) {
@@ -2072,10 +2189,11 @@ function init() {
       if (path) {
         folderPathEl.value = path;
         try { localStorage.setItem(STORAGE_SITE_LIST_SAVE_DIR, path); } catch (_) {}
-        tryAutoLoadSiteListFromBaseDir(true);
+        refreshSharedReferences(true);
       }
     });
   }
+  document.getElementById('btn-refresh-references').addEventListener('click', () => refreshSharedReferences());
   const folderInput = document.getElementById('site-list-folder-input');
   const btnUpdateSiteList = document.getElementById('btn-update-site-list');
   if (btnUpdateSiteList && folderInput) {
@@ -2105,18 +2223,14 @@ function init() {
         return;
       }
       const inferredBase = inferBaseDirFromSelectedFiles(files);
-      if (folderPathEl && inferredBase) {
-        folderPathEl.value = inferredBase;
-        try { localStorage.setItem(STORAGE_SITE_LIST_SAVE_DIR, inferredBase); } catch (_) {}
-      }
       const names = Array.from(files).map(f => f.name).filter(Boolean);
       const preview = names.slice(0, 3).join(', ');
       const selectedLabel = names.length > 3
         ? `${names.length} files selected (${preview}, ...)`
         : `${names.length} files selected (${preview})`;
       showEnmResult('info', inferredBase
-        ? `${selectedLabel}. Base dir detected: ${inferredBase}`
-        : `${selectedLabel}. Base dir not auto-detected by browser; keeping current value. If needed, set Base dir using the folder button next to it.`);
+        ? `${selectedLabel}. Source folder: ${inferredBase}. Shared references folder preserved.`
+        : `${selectedLabel}. Shared references folder preserved.`);
       await updateSiteListFromFolder(files);
       this.value = '';
     });
@@ -2154,7 +2268,6 @@ function init() {
   // Remember all paths (load last used and save on change/blur)
   bindPathStorage('enm-output-dir', STORAGE_LAST_OUTPUT_DIR);
   bindPathStorage('parser-output-dir', STORAGE_PARSER_OUTPUT);
-  bindPathStorage('parser-cellref-dir', STORAGE_PARSER_CELLREF);
   bindPathStorage('parser-enriched-dir', STORAGE_PARSER_ENRICHED);
   bindPathStorage('file-viewer-output-dir', STORAGE_FILE_VIEWER_OUTPUT);
 
@@ -2204,11 +2317,18 @@ function init() {
   const folderBrowseMap = [
     { btnId: 'btn-browse-output',            inputId: 'enm-output-dir',          storageKey: STORAGE_LAST_OUTPUT_DIR },
     { btnId: 'btn-browse-parser-output',     inputId: 'parser-output-dir',        storageKey: STORAGE_PARSER_OUTPUT },
-    { btnId: 'btn-browse-parser-cellref',    inputId: 'parser-cellref-dir',       storageKey: STORAGE_PARSER_CELLREF },
     { btnId: 'btn-browse-parser-enriched',   inputId: 'parser-enriched-dir',      storageKey: STORAGE_PARSER_ENRICHED },
     { btnId: 'btn-browse-file-viewer-output',inputId: 'file-viewer-output-dir',   storageKey: STORAGE_FILE_VIEWER_OUTPUT },
+    { btnId: 'btn-browse-weekly-notebooks', inputId: 'weekly-notebook-dir', storageKey: 'downloader_weekly_notebooks' },
+    { btnId: 'btn-browse-weekly-history', inputId: 'weekly-history-dir', storageKey: 'downloader_weekly_history' },
+    { btnId: 'btn-browse-weekly-vivo', inputId: 'weekly-vivo-dir', storageKey: 'downloader_weekly_vivo' },
+    { btnId: 'btn-browse-cellref-lte', inputId: 'cellref-lte-input-dir', storageKey: 'downloader_cellref_lte_input' },
+    { btnId: 'btn-browse-cellref-nr', inputId: 'cellref-nr-input-dir', storageKey: 'downloader_cellref_nr_input' },
+    { btnId: 'btn-browse-cellref-scripts', inputId: 'cellref-scripts-dir', storageKey: 'downloader_cellref_scripts' },
+    { btnId: 'btn-browse-cellref-parameters', inputId: 'cellref-parameter-dir', storageKey: 'downloader_cellref_parameters' },
   ];
   for (const { btnId, inputId, storageKey } of folderBrowseMap) {
+    if (inputId.startsWith('weekly-') || inputId.startsWith('cellref-')) bindPathStorage(inputId, storageKey);
     const btn = document.getElementById(btnId);
     const inp = document.getElementById(inputId);
     if (btn && inp) {
@@ -2236,6 +2356,38 @@ function init() {
       try { localStorage.setItem(STORAGE_CUSTOMIZE_TXTS, String(this.checked)); } catch (_) {}
     });
   }
+
+  const weeklyMode = document.getElementById('chk-weekly-workflow');
+  const syncWorkflowOptions = () => {
+    const full = weeklyMode.checked;
+    document.getElementById('weekly-options-group').style.display = full ? 'block' : 'none';
+    document.getElementById('legacy-enrichment-group').style.display = full ? 'none' : 'block';
+    enrichGroup.style.display = full || chkCustomize.checked ? 'block' : 'none';
+    document.getElementById('weekly-history-dir').disabled = !document.getElementById('chk-create-weekly').checked;
+    document.getElementById('btn-browse-weekly-history').disabled = !document.getElementById('chk-create-weekly').checked;
+    document.getElementById('weekly-vivo-dir').disabled = !document.getElementById('chk-transfer-vivo').checked;
+    document.getElementById('btn-browse-weekly-vivo').disabled = !document.getElementById('chk-transfer-vivo').checked;
+  };
+  for (const id of ['chk-weekly-workflow', 'chk-create-weekly', 'chk-transfer-vivo', 'chk-cellref-run-all', 'chk-cellref-refresh-reports']) {
+    const checkbox = document.getElementById(id);
+    try {
+      const saved = localStorage.getItem('downloader_' + id);
+      if (saved !== null) checkbox.checked = saved === 'true';
+    } catch (_) {}
+    checkbox.addEventListener('change', () => {
+      try { localStorage.setItem('downloader_' + id, String(checkbox.checked)); } catch (_) {}
+      syncWorkflowOptions();
+    });
+  }
+  chkCustomize.addEventListener('change', syncWorkflowOptions);
+  syncWorkflowOptions();
+  updateSharedReferenceSummary();
+  document.getElementById('btn-run-cellref').addEventListener('click', runCellrefs);
+  document.getElementById('btn-cancel-cellref').addEventListener('click', () => { if (_cellrefAbort) _cellrefAbort.abort(); });
+  document.getElementById('btn-cellref-reference-settings').addEventListener('click', () => {
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-enm-btn')).show();
+    document.getElementById('shared-references-card').scrollIntoView({block: 'start'});
+  });
 
   // Parser input files (ZIP / XML)
   _loadParserFiles();
@@ -2283,5 +2435,5 @@ document.addEventListener('DOMContentLoaded', init);
 // The server uses a 3-second delayed shutdown that is automatically cancelled
 // if any request arrives within that window (e.g. on page refresh).
 window.addEventListener('beforeunload', function () {
-  navigator.sendBeacon('http://127.0.0.1:8765/api/shutdown');
+  navigator.sendBeacon(WORKFLOW_API_BASE + '/api/shutdown');
 });
