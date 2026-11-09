@@ -104,10 +104,12 @@ AVAILABLE_MOS = [
     {"id": "AnrFunctionNR", "name": "AnrFunctionNR.*", "description": "ANR Function NR"},
     {"id": "CUUP5qi", "name": "CUUP5qi.*", "description": "CUUP 5qi"},
     {"id": "ExternalGNodeBFunction", "name": "ExternalGNodeBFunction.*", "description": "External GNodeB Function"},
+    {"id": "ExternalGNBCUCPFunction", "name": "ExternalGNBCUCPFunction.*", "description": "External GNB CUCP Function"},
     {"id": "ExternalGUtranCell", "name": "ExternalGUtranCell.*", "description": "External GUtran Cell"},
     {"id": "McfbCellProfileUeCfg", "name": "McfbCellProfileUeCfg.*", "description": "Mcfb Cell Profile UE Cfg"},
     {"id": "ExternalNRCellCU", "name": "ExternalNRCellCU.*", "description": "External NR Cell CU"},
     {"id": "UeMCEUtranFreqRelProfileUeCfg", "name": "UeMCEUtranFreqRelProfileUeCfg.*", "description": "UE MC EUtran Freq Rel Profile UE Cfg"},
+    {"id": "AnrFunctionNRUeCfg", "name": "AnrFunctionNRUeCfg.*", "description": "ANR Function NR UE Cfg"},
 ]
 
 # Set of known IDs: avoids crash if JSON has an MO that no longer exists
@@ -327,7 +329,7 @@ def main():
         config = json.load(f)
 
     enms = config.get("enms") or []
-    output_dir = (config.get("output_dir") or "C:/eNB_Fake/data/input").replace("/", os.sep)
+    output_dir = (config.get("output_dir") or "C:/Dumps/todos_enms").replace("/", os.sep)
     mos_file_name = config.get("mos_file") or "mos_downloader.txt"
     command_template = (config.get("command_template") or "").strip()
     selected_mos = config.get("selected_mos") or [m["id"] for m in AVAILABLE_MOS]

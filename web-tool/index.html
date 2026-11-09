@@ -29,6 +29,11 @@
         </button>
       </li>
       <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-audits-btn" data-bs-toggle="tab" data-bs-target="#tab-audits" type="button" role="tab" aria-controls="tab-audits" aria-selected="false">
+          <i class="bi bi-clipboard-check"></i> Audits
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
         <button class="nav-link" id="tab-viewer-btn" data-bs-toggle="tab" data-bs-target="#tab-file-viewer" type="button">
           <i class="bi bi-file-earmark-spreadsheet"></i> File Viewer
         </button>
@@ -116,7 +121,7 @@
                   <div class="mb-0 mt-2">
                     <label class="form-label fw-bold small">Output Directory (shared)</label>
                     <div class="input-group input-group-sm">
-                      <input type="text" class="form-control" id="enm-output-dir" value="C:/eNB_Fake/data/input">
+                      <input type="text" class="form-control" id="enm-output-dir" value="C:/Dumps/todos_enms">
                       <input type="file" id="folder-picker-output" webkitdirectory directory style="display:none">
                       <button class="btn btn-outline-secondary" id="btn-browse-output" type="button" title="Browse for folder">
                         <i class="bi bi-folder2-open"></i>
@@ -318,6 +323,9 @@
                 <div class="card-body">
                   <p class="text-muted small mb-2">Run All downloads the ENM dumps and runs the complete audit workflow below. Run Parser uses the selected ZIP / XML files.</p>
                   <div class="mb-3">
+                    <label class="form-label fw-bold small" for="parser-input-dir">Pasta de entrada (todos os ZIP / XML)</label>
+                    <input class="form-control" id="parser-input-dir" value="C:/Dumps/todos_enms">
+                    <p class="small text-muted mb-1">Usada automaticamente quando não houver arquivos selecionados manualmente.</p>
                     <div class="d-flex align-items-center justify-content-between mb-1">
                       <label class="form-label fw-bold small mb-0">Input Files (ZIP / XML)</label>
                       <span class="small text-muted" id="parser-files-summary">No files selected</span>
@@ -335,12 +343,16 @@
                   <div class="mb-3">
                     <label class="form-label fw-bold small">Output Directory (parsed TXT files)</label>
                     <div class="input-group input-group-sm">
-                      <input type="text" class="form-control" id="parser-output-dir" value="C:/Downloader/data/output">
+                      <input type="text" class="form-control" id="parser-output-dir" value="C:/Dumps/todos_enms">
                       <input type="file" id="folder-picker-parser-output" webkitdirectory directory style="display:none">
                       <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-output" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
                     </div>
                   </div>
                   <hr class="my-2">
+                  <div class="mb-3">
+                    <label class="form-label fw-bold small" for="parser-processed-dir">MOs tratados (etapas 3 a 6)</label>
+                    <input class="form-control" id="parser-processed-dir" value="C:/Dumps/LTE_Total">
+                  </div>
                   <div class="border rounded p-2 mb-3">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" id="chk-weekly-workflow" checked>
@@ -348,11 +360,7 @@
                     </div>
                     <p class="text-muted small ms-4 mb-2">Parser, relatórios LTE, Camilo, TDD e 5G, na mesma sequência da rotina de segunda-feira.</p>
                     <div id="weekly-options-group">
-                      <label class="form-label small mb-1" for="weekly-notebook-dir">Pasta dos notebooks</label>
-                      <div class="input-group input-group-sm mb-2">
-                        <input class="form-control" id="weekly-notebook-dir" value="C:/Users/leocc/Novos_Audits">
-                        <button class="btn btn-outline-secondary" type="button" id="btn-browse-weekly-notebooks" title="Escolher pasta"><i class="bi bi-folder2-open"></i></button>
-                      </div>
+                      <p class="small mb-2"><i class="bi bi-check-circle"></i> Scripts da rotina semanal integrados ao Downloader.</p>
                       <p class="text-muted small mb-2">As referências vêm da pasta selecionada em <strong>Referências 4G / 5G e lista de sites</strong>. Configure a geração na aba <strong>Cellrefs</strong>.</p>
                       <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="chk-create-weekly" checked>
@@ -387,7 +395,7 @@
                     <div class="mb-3">
                       <label class="form-label fw-bold small">Enriched Files Directory (relatórios atuais)</label>
                       <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" id="parser-enriched-dir" value="C:/Downloader/data/enriched">
+                        <input type="text" class="form-control" id="parser-enriched-dir" value="C:/Camilo">
                         <input type="file" id="folder-picker-parser-enriched" webkitdirectory directory style="display:none">
                         <button class="btn btn-outline-secondary" type="button" id="btn-browse-parser-enriched" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
                       </div>
@@ -425,9 +433,8 @@
                   <p class="text-muted small">São lidos os arquivos XLSX dessas pastas, com cabeçalho na terceira linha. Mantenha somente os downloads da execução desejada. O acesso ao portal continua manual.</p>
                 </div>
                 <div class="col-lg-6">
-                  <label class="form-label small fw-bold" for="cellref-scripts-dir">Pasta dos scripts de geração</label>
-                  <div class="input-group input-group-sm mb-2"><input class="form-control" id="cellref-scripts-dir" value="C:/Cellref/scripts"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-scripts" title="Escolher pasta dos scripts"><i class="bi bi-folder2-open"></i></button></div>
-                  <p class="small text-muted"><code>cellref_LTE_v2.ipynb</code> e <code>CellRef_5G_v3.ipynb</code>. Os originais são preservados.</p>
+                  <p class="small fw-bold"><i class="bi bi-check-circle"></i> Scripts de geração integrados ao Downloader.</p>
+                  <p class="small text-muted">Cellref LTE v2 e 5G v3. As pastas abaixo são apenas entradas e saídas dos dados.</p>
                   <label class="form-label small fw-bold" for="cellref-parameter-dir">Relatórios ENM existentes (para executar somente esta aba)</label>
                   <div class="input-group input-group-sm mb-2"><input class="form-control" id="cellref-parameter-dir" value="C:/Camilo"><button class="btn btn-outline-secondary" type="button" id="btn-browse-cellref-parameters" title="Escolher pasta dos parâmetros ENM"><i class="bi bi-folder2-open"></i></button></div>
                   <p class="text-muted small">EUtranCell_TDD_FDD e relatórios 5G atuais. Os MOs processados vêm de Output Directory da aba ENM Dump. No Run All, são usados os parâmetros do novo dump.</p>
@@ -448,6 +455,34 @@
       </div>
 
       <!-- File Viewer tab -->
+      <div class="tab-pane fade" id="tab-audits" role="tabpanel" aria-labelledby="tab-audits-btn">
+        <div class="container-fluid">
+          <div class="card card-compact mb-3">
+            <div class="card-header bg-primary text-white"><i class="bi bi-clipboard-check"></i> Audits</div>
+            <div class="card-body">
+              <p>Execute os audits com os dados já processados. Os relatórios usam as pastas originais de cada notebook.</p>
+              <p class="small text-muted">Confira se o dump, os relatórios semanais e os cellrefs estão atualizados antes de executar. A seleção roda na ordem abaixo e para na primeira falha. Arquivos existentes nos destinos serão atualizados.</p>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <button class="btn btn-outline-secondary btn-sm" id="btn-audits-select-ready" type="button">Selecionar disponíveis</button>
+                <button class="btn btn-outline-secondary btn-sm" id="btn-audits-clear" type="button">Limpar seleção</button>
+                <button class="btn btn-outline-secondary btn-sm" id="btn-audits-refresh" type="button"><i class="bi bi-arrow-repeat"></i> Verificar entradas</button>
+              </div>
+              <p class="small" id="audits-summary" role="status">Abra esta aba para verificar os audits.</p>
+              <div id="audits-list"></div>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button class="btn btn-primary" id="btn-run-audits" type="button" disabled><i class="bi bi-play-fill"></i> Executar selecionados</button>
+                <button class="btn btn-outline-secondary" id="btn-cancel-audits" type="button" disabled><i class="bi bi-stop-fill"></i> Cancelar</button>
+              </div>
+              <p class="small mt-2 mb-0" id="audits-status" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+          <div class="card card-compact mb-3">
+            <div class="card-header bg-dark text-white">Log dos audits</div>
+            <div class="card-body p-0"><textarea class="form-control font-monospace small" id="audits-log" rows="18" readonly aria-label="Log dos audits"></textarea></div>
+          </div>
+        </div>
+      </div>
+
       <div class="tab-pane fade" id="tab-file-viewer" role="tabpanel">
         <div class="container-fluid py-2">
           <div class="card card-compact mb-3">
@@ -595,5 +630,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="app.js"></script>
   <script src="file-viewer.js"></script>
+  <script src="audits.js"></script>
 </body>
 </html>

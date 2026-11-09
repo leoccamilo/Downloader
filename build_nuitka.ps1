@@ -177,10 +177,16 @@ python -m nuitka `
     --include-package=pandas `
     --include-package=openpyxl `
     --include-data-dir=web-tool=web-tool `
+    --include-data-dir=bundled_scripts=bundled_scripts `
+    --include-data-files=bundled_scripts/audits/*.py=bundled_scripts/audits/ `
+    --include-data-files=bundled_sources.py=bundled_sources.py `
     --include-data-files=dump_multiple_enms.py=dump_multiple_enms.py `
     --include-data-files=xml_to_txt.py=xml_to_txt.py `
     --include-data-files=weekly_workflow.py=weekly_workflow.py `
     --include-data-files=cellref_workflow.py=cellref_workflow.py `
+    --include-data-files=audit_workflow.py=audit_workflow.py `
+    --include-data-files=audit_exports.py=audit_exports.py `
+    --include-data-files=direct_workflow.py=direct_workflow.py `
     --include-data-files=post_process_4_camilo.py=post_process_4_camilo.py `
     --include-data-files=post_process_5_tdd.py=post_process_5_tdd.py `
     --include-data-files=post_process_6_5g.py=post_process_6_5g.py `

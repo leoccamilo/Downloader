@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import uuid
+from bundled_sources import CELLREF_SCRIPTS
 
 LTE_NOTEBOOK = "cellref_LTE_v2.ipynb"
 NR_NOTEBOOK = "CellRef_5G_v3.ipynb"
@@ -51,7 +52,7 @@ def preflight_cellrefs(config, require_parameters=True):
     from weekly_workflow import notebook_cells
 
     options = config.get("cellref") or {}
-    scripts = Path(options.get("scripts_dir") or "C:/Cellref/scripts")
+    scripts = Path(options.get("scripts_dir") or CELLREF_SCRIPTS)
     for name in (LTE_NOTEBOOK, NR_NOTEBOOK):
         path = scripts / name
         if not path.is_file():
@@ -170,7 +171,7 @@ def generate_cellrefs(config, run_dir, processed, enriched, week, warnings):
              ("C:/cellref/LTE", lte_out), ("C:/cellref/NR", nr_out),
              ("C:/Vivo Reports/LTE/LTE MOs/SectorCarrier.csv", parameters / "SectorCarrier.csv"),
              ("C:/Camilo", parameters), ("C:/Dumps/todos_enms", Path(run_dir) / "raw")]
-    scripts = Path((config.get("cellref") or {}).get("scripts_dir") or "C:/Cellref/scripts")
+    scripts = Path((config.get("cellref") or {}).get("scripts_dir") or CELLREF_SCRIPTS)
     notebook_hashes = {}
     for name in (LTE_NOTEBOOK, NR_NOTEBOOK):
         print(f"\nCELLREF: {name}", flush=True)
@@ -263,6 +264,11 @@ def publish_cellrefs(config, generated, exports):
 
 
 def run_cellref_workflow(config):
+    from weekly_workflow import DEFAULT_NOTEBOOK_DIR
+    config.setdefault('notebook_dir', DEFAULT_NOTEBOOK_DIR)
+    if config.get('raw_txt_dir'):
+        from direct_workflow import run_direct_cellrefs
+        return run_direct_cellrefs(config)
     from weekly_workflow import publish_file, DEFAULT_NOTEBOOK_DIR
 
     preflight_cellrefs(config)

@@ -208,7 +208,7 @@ def clear_output_txt_files(output_dir: Path):
     return removed
 
 
-def parse_ericsson_xmls(inputs, output_dir: str):
+def parse_ericsson_xmls(inputs, output_dir: str, *, clear_existing=True, strict=False, include_nr_relations=False, selected_mos=None):
     """Convert 3GPP XMLs (Ericsson) to one TXT per MO.
 
     inputs: a folder path, or a list of folders / .xml / .xml.gz / .zip paths.
@@ -229,7 +229,11 @@ def parse_ericsson_xmls(inputs, output_dir: str):
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    removed = clear_output_txt_files(output_path)
+    selected_mos = set(selected_mos) if selected_mos is not None else None
+    if selected_mos == set():
+        raise ValueError('Select at least one MO for targeted conversion.')
+    # A targeted recovery must never remove unrelated TXT files.
+    removed = clear_output_txt_files(output_path) if clear_existing and selected_mos is None else 0
     if removed:
         print(f"Output directory cleared ({removed} old .txt file(s) removed).")
 
@@ -275,6 +279,16 @@ def parse_ericsson_xmls(inputs, output_dir: str):
 
                         if vs_stack:
                             vs_stack[-1] = (vs_stack[-1][0], vs_type)
+
+                        if selected_mos is not None and (not vs_type or vs_type.replace('vsData', '') not in selected_mos):
+                            if vs_stack:
+                                vs_stack.pop()
+                            elem.clear()
+                            prev = elem.getprevious()
+                            while prev is not None and prev.tag == TAG_VS:
+                                prev.getparent().remove(prev)
+                                prev = elem.getprevious()
+                            continue
 
                         # Backfill ancestor types (iterparse gives child 'end' before parent 'end')
                         # Walk up the tree to get vsDataType for each VsDataContainer ancestor
@@ -324,7 +338,7 @@ def parse_ericsson_xmls(inputs, output_dir: str):
                                     column_name = anc_type.replace("vsData", "")
                                     parameters[column_name] = anc_id
 
-                            if mo_name in _4G_ONLY_MOS and has_nr_cell and not has_eutran_cell:
+                            if not include_nr_relations and mo_name in _4G_ONLY_MOS and has_nr_cell and not has_eutran_cell:
                                 skipped_nr += 1
                                 vs_stack.pop()
                                 elem.clear()
@@ -374,6 +388,9 @@ def parse_ericsson_xmls(inputs, output_dir: str):
 
                 del context
         except (etree.XMLSyntaxError, OSError, zipfile.BadZipFile, EOFError) as e:
+            if strict:
+                shutil.rmtree(sink.spool_dir, ignore_errors=True)
+                raise RuntimeError(f'XML parsing failed: {label}: {e}') from e
             print(f"  ERROR reading {label}: {e} — records parsed so far are kept", flush=True)
 
         print(f"  {label}: {record_count:,} total records parsed", flush=True)
@@ -387,6 +404,7 @@ def parse_ericsson_xmls(inputs, output_dir: str):
         print(f"  {mo_name}: {total:,} rows -> {mo_name}.txt")
 
     print(f"XML parsing completed: {len(written)} MO(s) written as TXT.")
+    return written
 
 
 def main():

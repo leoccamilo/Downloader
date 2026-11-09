@@ -1,0 +1,117 @@
+{
+  "scripts": [
+    {
+      "file": "weekly/2_Parser_XML_parquet.ipynb",
+      "sha256": "92d7099fd4707f9c232c9addcc20ec16a81ba48446fdff4fa7f905bdc9c987e2",
+      "original_sha256": "d29f8200a1b77b994ae00b8e611de09f833d3b99ed384a1b76cd49901c76f8fe"
+    },
+    {
+      "file": "weekly/3_Arquivos_Glob_parquet.ipynb",
+      "sha256": "2fe02e579f298d0033f07df4a068426ed404e045ed045afdea05d1aa16050e6a",
+      "original_sha256": "fc2c7371f83aa6b1590c55b9dc2ddfcc830d48a9749fe9e7346bd383adaabe02"
+    },
+    {
+      "file": "weekly/4_MOs_Camilo.ipynb",
+      "sha256": "f0543911a33c729308abd4f201d81cfd2129d29899455ae2471fc95f957db043",
+      "original_sha256": "f18b322ede71be480a09383106d7b687cd2f1127fc7b668791463e140a96750e"
+    },
+    {
+      "file": "weekly/5_MOs_TDD.ipynb",
+      "sha256": "f240cd8e76cd7b4b877ba41dda2715d9ef6eddb274e2b0658db5ae7af487a3bf",
+      "original_sha256": "29d0f4ee5dc9996ae64195db331b2509ed0523e953dae41eec04c4f263757b86"
+    },
+    {
+      "file": "weekly/6_MOs_5G.ipynb",
+      "sha256": "f694450158d2af4b9523d983eee80dbbe744114b605fedbdeda357d5866749ba",
+      "original_sha256": "7c6a5c3240605b795d9bbb5a34428b23350635a2a89c15ee15b5861b1d382c08"
+    },
+    {
+      "file": "cellrefs/cellref_LTE_v2.ipynb",
+      "sha256": "e8f2db1f8ef53dcd9526bc64882bfdd47ff8bca4b3c7be96e04c4c187906079a",
+      "original_sha256": "b90f905a05ed20a7b1185c5f09c368005864e6b70bf69e15907e2b2855c68370"
+    },
+    {
+      "file": "cellrefs/CellRef_5G_v3.ipynb",
+      "sha256": "93e8123e80b55de73eecec7d663d7f3e13293b39eeaf464812a8a6a8e9aaa318",
+      "original_sha256": "ce1f1f94be1da8b5e274468222be9177a12794aadf7e78e78a5d3d5f6a57681c"
+    },
+    {
+      "file": "audits/Missing_TermpointToENB_4G_4G.ipynb",
+      "sha256": "0cc761277063511ee6f8289cf9a90d122409156f40b71cfff85c66d74b09dc5e",
+      "original_sha256": "e0cf0e58ec5856501e0b1196a75e4d1cdc6a99fea26451cb62f75987b5d52ab1"
+    },
+    {
+      "file": "audits/Audit_CapacityState.ipynb",
+      "sha256": "57aed530990130f275e44820ebe8d150ead700aa2271beab1e5ebc539e3a72ea",
+      "original_sha256": "36a6deda21f73eb5a95ce58b43bb16604c547f30b059b4f2f641f956ee3ad48d"
+    },
+    {
+      "file": "audits/Audit_Cellsubscriptioncapacity.ipynb",
+      "sha256": "3aa4d72cfe6635820917f9cbb8b7859dfe081d789a00e0920b3f003dc1147290",
+      "original_sha256": "e7c1938d823f58dbe26374295fb3ef6f406a17fb5fcf7aacef4219b2bc0d4b62"
+    },
+    {
+      "file": "audits/TermpointToGNB_Distancia.ipynb",
+      "sha256": "7467ff5044f3f8a3c728129258aeba5ac3740ba784bd9cee5188b81a730b0a47",
+      "original_sha256": "78dca58dd56176b5fc43dac543b6d3104aec10e5316fc7d6d05f2ee6b5569af4"
+    },
+    {
+      "file": "audits/Sites_Novos_4G_5G.ipynb",
+      "sha256": "e83ff040c0a3e261e59face70e5f64a5d6582aa15d35597c24cfeb0800730db6",
+      "original_sha256": "5b4dc19763a8c5d7e73153de193accc3865d01c66d2d3c5fbb7c8921388dd902"
+    },
+    {
+      "file": "audits/Audit_NRPCI_Neighbor.ipynb",
+      "sha256": "e4d8b83aa84feaf07fd91a2a23727f988d52d668410775456c6e9e5e0a8f494b",
+      "original_sha256": "0fdd0caa1c945d841cadcb22020bd2f9745bf39431fcd3f5be9d11d77bcda64b"
+    },
+    {
+      "file": "audits/Audit_PSCell_Endc.ipynb",
+      "sha256": "e6047d096d0e5b07b594f4c066cd9cf4d27adcd3581f8a5028e4008117bc9077",
+      "original_sha256": "d92be4b1ed3f3999033521c9cbf66501d01c7db73c65def4e145144d9d024ecd"
+    },
+    {
+      "file": "audits/Audit_PSCellChange_v10.ipynb",
+      "sha256": "970e690926c3cbd729c3a1d5e08e33cfa81dd76574f17bcdbf46ea16104ad022",
+      "original_sha256": "b9a8663bf439e58bfe075ad49ea9eed86caf38d7174fd03d2aad196f256286b0",
+      "adaptation": "PSCell site/cell/frequency/distance rules aligned to MoB Tool Box 2026-11-09; extra original reverse reports preserved.",
+      "reference_sha256": "428f2603b97d1ca292e009c07eeaf7f86576c2d669d465637e8d38736d8e02af",
+      "reference_sources": {
+        "mob_audit_pscell.py": "428f2603b97d1ca292e009c07eeaf7f86576c2d669d465637e8d38736d8e02af",
+        "site_key.py": "59ace19423520b9dc6fd52529b2f1f53802cc51a6ad6f6944f0e3fc691dcdf61",
+        "geo_utils.py": "27f1d1f7c57a853432a756ff2876f8154e4c187d80d239516b36565d732951fd"
+      },
+      "reference_site_key_mode": "cell"
+    },
+    {
+      "file": "audits/Audit_sCellCandidate.ipynb",
+      "sha256": "fc7f891e11c62f9e7327c169fbfa7adedf65a7ad4019ca40826b94f5b345a7cc",
+      "original_sha256": "44d20c3a7205dc0581956cec9b62aed66b7f6f268419170fc3cc03ac7dc3ecf8"
+    },
+    {
+      "file": "audits/Missing_EUtranFreqRelation_4G_4G.ipynb",
+      "sha256": "26ff56e581c45ee1c261b20ed07c859bc95946abd68d9cf0e20c74009a7ae016",
+      "original_sha256": "e6e4a89c3dc52a38da2eaf464bce326d7490edc84e71431a276125736c6bc111"
+    },
+    {
+      "file": "audits/Missing_Neighbor_4G_4G.py",
+      "sha256": "866a596ffdc59d1f16aee06aa94c967b19774bdf160442097611c8d9f6e23330",
+      "original_sha256": "866a596ffdc59d1f16aee06aa94c967b19774bdf160442097611c8d9f6e23330"
+    },
+    {
+      "file": "audits/Audit_Nearest_NRPCI.py",
+      "sha256": "a3f22eed3999414ae63e52e6e9139eadd49c55084113dfe45ed7d37c50a4138d",
+      "original_sha256": "a3f22eed3999414ae63e52e6e9139eadd49c55084113dfe45ed7d37c50a4138d"
+    },
+    {
+      "file": "audits/NRPCI_Planning.py",
+      "sha256": "e5f37888a92c3c662459b6e9d6dcaf468530b86445215376206775ad1d5eafb8",
+      "original_sha256": "e5f37888a92c3c662459b6e9d6dcaf468530b86445215376206775ad1d5eafb8"
+    },
+    {
+      "file": "audits/Audit_NRPCI_Neighbor.py",
+      "sha256": "a21f202f911e9630b9849dc415b2ec9a702c6462cf3ce8744ccd8331344ef34c",
+      "original_sha256": "a21f202f911e9630b9849dc415b2ec9a702c6462cf3ce8744ccd8331344ef34c"
+    }
+  ]
+}

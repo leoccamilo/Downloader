@@ -61,6 +61,7 @@ pyi_contents.txt
 # Local test/sample files
 site_scope_test.csv
 *.ipynb
+!bundled_scripts/**/*.ipynb
 _tmp/
 .playwright-mcp/
 .weekly_runs/

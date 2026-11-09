@@ -7,3 +7,4 @@ openpyxl
 xlsxwriter
 lxml
 pyarrow
+haversine

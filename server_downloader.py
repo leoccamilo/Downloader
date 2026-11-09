@@ -22,6 +22,7 @@ import sys
 import tempfile
 import shutil
 import threading
+from bundled_sources import use_bundled_scripts
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -49,6 +50,7 @@ POST_PROCESS_4_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_4_camilo.py")
 POST_PROCESS_5_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_5_tdd.py")
 POST_PROCESS_6_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_6_5g.py")
 WEEKLY_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "weekly_workflow.py")
+AUDIT_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "audit_workflow.py")
 _workflow_lock = threading.Lock()
 # Default cellref path when using Downloader at C:\Downloader (e.g. portable)
 CELLREF_DEFAULT_PATH = "C:\\Downloader\\cellref"
@@ -666,6 +668,7 @@ def api_run_weekly_workflow():
     if request.method == "OPTIONS":
         return "", 204
     data = request.get_json(force=True, silent=True) or {}
+    use_bundled_scripts(data)
     dump_config = data.get("dump_config")
     if dump_config:
         if not isinstance(dump_config, dict) or not dump_config.get("output_dir"):
@@ -681,11 +684,45 @@ def api_run_weekly_workflow():
     return _workflow_response(stream_weekly_workflow(data))
 
 
+@app.route("/api/audits", methods=["GET"])
+def api_audits():
+    from audit_workflow import catalog
+    return jsonify(catalog())
+
+
+@app.route("/api/run-audits", methods=["POST"])
+def api_run_audits():
+    from audit_workflow import selected_audits
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(error="Invalid audit selection"), 400
+    try:
+        selected_audits(data.get("audit_ids"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+    def stream():
+        path = None
+        try:
+            fd, path = tempfile.mkstemp(suffix=".json", prefix="audit_config_")
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"audit_ids": data["audit_ids"]}, handle)
+            code = yield from _stream_checked_script(get_python_for_dump(), AUDIT_WORKFLOW_SCRIPT, [path])
+            if code:
+                yield "\nAUDITS FAILED.\n"
+        finally:
+            if path and os.path.exists(path):
+                os.unlink(path)
+
+    return _workflow_response(stream())
+
+
 @app.route("/api/run-cellref", methods=["POST", "OPTIONS"])
 def api_run_cellref():
     if request.method == "OPTIONS":
         return "", 204
     data = request.get_json(force=True, silent=True) or {}
+    use_bundled_scripts(data)
     if not all(str(data.get(key) or "").strip() for key in ("reference_dir", "output_dir", "enriched_dir")):
         return Response("reference_dir, output_dir and enriched_dir required\n", status=400)
 
@@ -1035,13 +1072,19 @@ def api_shutdown():
     """Schedule a delayed shutdown. Cancelled if any request arrives within 3s (e.g. page refresh)."""
     import threading
     global _shutdown_timer
+    if _workflow_lock.locked():
+        return "BUSY", 200
     if _shutdown_timer and _shutdown_timer.is_alive():
         _shutdown_timer.cancel()
-    def _exit():
-        import time
-        time.sleep(3)
-        os._exit(0)
-    _shutdown_timer = threading.Timer(3, os._exit, args=(0,))
+    def exit_when_idle():
+        # Recheck when the timer fires: a job can start after this request.
+        if not _workflow_lock.acquire(blocking=False):
+            return
+        try:
+            os._exit(0)
+        finally:
+            _workflow_lock.release()
+    _shutdown_timer = threading.Timer(3, exit_when_idle)
     _shutdown_timer.daemon = True
     _shutdown_timer.start()
     return "OK", 200

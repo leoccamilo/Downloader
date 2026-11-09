@@ -19,6 +19,7 @@ import shutil
 import sys
 import traceback
 import uuid
+from bundled_sources import WEEKLY_SCRIPTS, CELLREF_SCRIPTS
 
 NOTEBOOKS = (
     "2_Parser_XML_parquet.ipynb",
@@ -27,7 +28,7 @@ NOTEBOOKS = (
     "5_MOs_TDD.ipynb",
     "6_MOs_5G.ipynb",
 )
-DEFAULT_NOTEBOOK_DIR = str(Path.home() / "Novos_Audits")
+DEFAULT_NOTEBOOK_DIR = str(WEEKLY_SCRIPTS)
 DEFAULT_REFERENCE_DIR = "C:/Camilo"
 DEFAULT_HISTORY_DIR = "C:/Camilo"
 DEFAULT_VIVO_DIR = "C:/Vivo Reports"
@@ -100,7 +101,7 @@ def preflight(config):
         cellref_options = config.get("cellref") or {}
         if cellref_options.get("enabled"):
             protected.extend(Path(cellref_options.get(key) or default) for key, default in (
-                ("scripts_dir", "C:/Cellref/scripts"), ("lte_input_dir", "C:/Cellref/LTE_dump"),
+                ("scripts_dir", str(CELLREF_SCRIPTS)), ("lte_input_dir", "C:/Cellref/LTE_dump"),
                 ("nr_input_dir", "C:/Cellref/NR_dump")))
         for key in ("history_dir", "vivo_dir"):
             if key == "vivo_dir" and not config.get("transfer_vivo"):
@@ -115,10 +116,11 @@ def preflight(config):
 
 
 class AdaptNotebook(ast.NodeTransformer):
-    def __init__(self, roots, week, guard_empty_relations=False):
+    def __init__(self, roots, week, guard_empty_relations=False, txt_mode=False):
         self.roots = roots
         self.week = week
         self.guard_empty_relations = guard_empty_relations
+        self.txt_mode = txt_mode
 
     def visit_Constant(self, node):
         if isinstance(node.value, str):
@@ -162,6 +164,10 @@ class AdaptNotebook(ast.NodeTransformer):
 
     def visit_Call(self, node):
         node = self.generic_visit(node)
+        if self.txt_mode and ((isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                               and node.func.value.id == 'glob' and node.func.attr == 'glob')
+                              or isinstance(node.func, ast.Name) and node.func.id == 'glob'):
+            node.func = ast.copy_location(ast.Name(id='notebook_glob', ctx=ast.Load()), node.func)
         if (isinstance(node.func, ast.Attribute) and node.func.attr == "replace"
                 and isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "str"):
             # Arrow's regex engine cannot execute the notebook's callable regex
@@ -224,7 +230,7 @@ class AdaptNotebook(ast.NodeTransformer):
         return node
 
 
-def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_missing_auxiliary=False):
+def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_missing_auxiliary=False, txt_mode=False):
     import numpy as np
     import pandas as pd
 
@@ -232,14 +238,30 @@ def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_mis
 
     def read_notebook_parquet(filename, **kwargs):
         import pyarrow as pa
-        frame = pd.read_parquet(filename, **kwargs)
-        mo = Path(filename).name.split("_")[0]
+        if txt_mode and Path(filename).suffix.lower() == '.txt':
+            frame = pd.read_csv(filename, sep='\t', encoding='latin-1', dtype='string[pyarrow]',
+                                usecols=kwargs.get('columns'), low_memory=False, keep_default_na=False, na_values=[''])
+            mo = Path(filename).stem
+        else:
+            frame = pd.read_parquet(filename, **kwargs)
+            mo = Path(filename).name.split("_")[0]
         variants = (mo + "Id", mo[:1].lower() + mo[1:] + "Id")
         if any(column in frame.columns for column in variants):
             for column in variants:
                 if column not in frame.columns:
                     frame[column] = pd.Series(pd.NA, index=frame.index, dtype=pd.ArrowDtype(pa.string()))
         return frame
+
+    def notebook_glob(pattern, *args, **kwargs):
+        import glob
+        normalized = str(pattern).replace('\\', '/')
+        match = re.search(r'/([^/]+)_\*_part\*\.parquet$', normalized)
+        if txt_mode and match:
+            requested = Path(normalized).parent / (match.group(1) + '.txt')
+            if requested.is_file():
+                return [str(requested)]
+            return [str(p) for p in requested.parent.glob('*.txt') if p.name.lower() == requested.name.lower()]
+        return glob.glob(pattern, *args, **kwargs)
 
     def read_notebook_column(frame, column):
         if column in frame:
@@ -314,6 +336,21 @@ def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_mis
             frame = frame[[col for col in frame.columns if col in columns]]
         return frame.copy()
 
+    def read_cellref_csv(filename, **kwargs):
+        # Original cellref notebooks use a CSV SectorCarrier and a legacy
+        # NRSectorCarrier alias. Normalize only these input representations.
+        filename = Path(filename)
+        requested = kwargs.pop('usecols', None)
+        if filename.name == 'SectorCarrier.txt':
+            kwargs.pop('delimiter', None)
+            kwargs['sep'] = '\t'
+        frame = pd.read_csv(filename, **kwargs)
+        if filename.name.startswith('5G_NRSectorCarrier') and 'NRSectorCarrier' not in frame:
+            identifiers = [c for c in ('NRSectorCarrierId', 'nRSectorCarrierId') if c in frame]
+            if identifiers:
+                frame['NRSectorCarrier'] = frame[identifiers].bfill(axis=1).iloc[:, 0]
+        return frame if requested is None else frame[list(requested)]
+
     namespace = {"__name__": "__main__", "__file__": str(path),
                  "np": np, "pd": pd, "semana_atual": week,
                  "read_reference_excel": read_reference_excel,
@@ -323,14 +360,18 @@ def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_mis
                  "read_notebook_column": read_notebook_column,
                  "require_report_rows": require_report_rows,
                  "notebook_add": notebook_add}
+    namespace['notebook_glob'] = notebook_glob
+    namespace['read_cellref_csv'] = read_cellref_csv
     raw = next(new for old, new in roots if old == "C:/Dumps/todos_enms")
     enriched = next(new for old, new in roots if old == "C:/Camilo")
-    fdd_only = path.name.startswith("5_") and not list(raw.glob("EUtranCellTDD_*_part*.parquet"))
+    def has_raw(mo):
+        return bool(notebook_glob(str(raw / (mo + '_*_part*.parquet')))) if txt_mode else bool(list(raw.glob(mo + '_*_part*.parquet')))
+    fdd_only = path.name.startswith("5_") and not has_raw('EUtranCellTDD')
     inventory_saved = False
     for index, source in notebook_cells(path):
         auxiliary = re.findall(r"base_path.*?\\(\w+)_\*", source)
         if (skip_missing_auxiliary and auxiliary and path.name.startswith(("4_", "5_"))
-                and auxiliary[0] != "EUtranCellTDD" and not list(raw.glob(auxiliary[0] + "_*_part*.parquet"))):
+                and auxiliary[0] != "EUtranCellTDD" and not has_raw(auxiliary[0])):
             print(f"Keeping existing {auxiliary[0]} report; no auxiliary raw MO available for refresh.", flush=True)
             continue
         # These original cells compute df2 but write the previous cell's df3.
@@ -353,7 +394,15 @@ def execute_notebook(path, roots, week, warnings, reference_cache=None, skip_mis
             print("No EUtranCellTDD in this scope; producing FDD-only inventory.", flush=True)
         print(f"[{path.name} / cell {index}]", flush=True)
         guard_empty = path.name.startswith("6_") and any(name in source for name in ("'5G_EUtranCellRelation'", "'5G_EUtranFreqRelation'"))
-        tree = AdaptNotebook(roots, week, guard_empty).visit(ast.parse(source))
+        tree = AdaptNotebook(roots, week, guard_empty, txt_mode=txt_mode).visit(ast.parse(source))
+        if txt_mode and path.name in ('cellref_LTE_v2.ipynb', 'CellRef_5G_v3.ipynb'):
+            class CellrefCSV(ast.NodeTransformer):
+                def visit_Call(self, node):
+                    self.generic_visit(node)
+                    if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == 'pd' and node.func.attr == 'read_csv':
+                        node.func = ast.copy_location(ast.Name(id='read_cellref_csv', ctx=ast.Load()), node.func)
+                    return node
+            tree = CellrefCSV().visit(tree)
         ast.fix_missing_locations(tree)
         try:
             exec(compile(tree, f"{path.name}:cell_{index}", "exec"), namespace)
@@ -396,7 +445,33 @@ def publish_file(source, target, exports):
     print(f"Saved: {target}", flush=True)
 
 
+def publish_mob_imports(config, enriched, exports=None):
+    """Publish the reference files formerly copied manually from Camilo."""
+    if not config.get('transfer_vivo'):
+        return
+    references = Path(config.get('reference_dir') or DEFAULT_REFERENCE_DIR)
+    sources = [references / 'cellref.xlsx', references / 'cellref_5g.xlsx',
+               Path(enriched) / 'EUtranCell_TDD_FDD.csv']
+    missing = [str(source) for source in sources if not source.is_file()]
+    if missing:
+        raise ValueError('MoB_IMP: arquivos obrigatórios ausentes: ' + ', '.join(missing))
+    destination = Path(config.get('vivo_dir') or DEFAULT_VIVO_DIR) / 'MoB_IMP'
+    exports = exports if exports is not None else []
+    for source in sources:
+        target = destination / source.name
+        if source.resolve() != target.resolve():
+            publish_file(source, target, exports)
+    inventory = Path(enriched) / 'EUtranCell_TDD_FDD.csv'
+    lte_target = destination.parent / 'LTE' / 'LTE MOs' / inventory.name
+    if inventory.resolve() != lte_target.resolve():
+        publish_file(inventory, lte_target, exports)
+
+
 def run_workflow(config):
+    config.setdefault('notebook_dir', DEFAULT_NOTEBOOK_DIR)
+    if config.get('raw_txt_dir'):
+        from direct_workflow import run_direct_workflow
+        return run_direct_workflow(config)
     preflight(config)
     run_date = datetime.fromisoformat(config["run_date"]) if config.get("run_date") else datetime.now()
     week = int(run_date.strftime("%U")) + 1  # Preserve notebook week numbering.
