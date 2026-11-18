@@ -121,6 +121,40 @@ class ServerGuardTests(unittest.TestCase):
         vivo = self.client.get("/api/audits").get_json()
         self.assertFalse(any(item.get("operator_blocked") for item in vivo["audits"]))
 
+    def test_parser_keeps_5g_to_4g_relations_only_for_claro(self):
+        calls = []
+        original = self.server.stream_parser_pipeline
+
+        def fake(*args, **kwargs):
+            calls.append(kwargs.get("include_nr_relations"))
+            yield "PIPELINE COMPLETED.\n"
+
+        self.server.stream_parser_pipeline = fake
+        try:
+            for operator, folder in (("claro", "C:/Claro_Reports/Dumps"), ("vivo", "C:/Dumps/todos_enms")):
+                response = self.post("/api/run-parser-pipeline", {"input_dir": folder, "output_dir": folder}, operator)
+                self.assertEqual(response.status_code, 200)
+                response.get_data()
+        finally:
+            self.server.stream_parser_pipeline = original
+        self.assertEqual(calls, [True, False])
+
+        captured = []
+        original_run = self.server._stream_run_script
+
+        def fake_run(python, script, args):
+            captured.append(args)
+            return iter(())
+
+        self.server._stream_run_script = fake_run
+        try:
+            list(self.server.stream_parser_pipeline("in", "out", False, "", "", None, include_nr_relations=True))
+            list(self.server.stream_parser_pipeline("in", "out", False, "", "", None))
+        finally:
+            self.server._stream_run_script = original_run
+        self.assertIn("--include-nr-relations", captured[0])
+        self.assertNotIn("--include-nr-relations", captured[1])
+
     def test_cors_allows_operator_headers(self):
         response = self.client.get("/api/busy")
         allowed = response.headers["Access-Control-Allow-Headers"]

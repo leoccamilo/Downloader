@@ -37,8 +37,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 _4G_ONLY_MOS = {"EUtranCellRelation"}
-# Total buffered rows (all MOs) before spilling to the spool on disk.
-_SPILL_ROWS = 200_000
+# Estimated in-memory size of the buffered rows (all MOs) before spilling to the
+# spool on disk. A row limit does not bound memory: a relation row has ~50
+# columns and an EUtranCellFDD row hundreds. Measured on the Claro PR dump
+# (4.2 GB XML): 200k rows -> 1.36 GB peak; parsing alone stays at ~22 MB.
+_SPILL_BYTES = 64 * 1024 * 1024
+# CPython sizes on 64-bit: list = 56 + 8 per slot; ASCII str = 49 + its length.
+_ROW_OVERHEAD = 56
+_SLOT_BYTES = 8
+_STR_OVERHEAD = 49
 _SPOOL_DIR_NAME = ".xml_to_txt_spool"
 
 
@@ -134,7 +141,7 @@ class TxtSink:
         self.buffers = {}   # mo -> [row lists]
         self.spooled = set()
         self.row_counts = {}
-        self.buffered = 0
+        self.buffered_bytes = 0
         if self.spool_dir.exists():
             shutil.rmtree(self.spool_dir, ignore_errors=True)
 
@@ -144,12 +151,14 @@ class TxtSink:
             if key not in cols:
                 cols[key] = len(cols)
         row = [""] * len(cols)
+        size = _ROW_OVERHEAD + _SLOT_BYTES * len(row)
         for key, value in record.items():
             row[cols[key]] = value
+            size += _STR_OVERHEAD + len(value)
         self.buffers.setdefault(mo_name, []).append(row)
         self.row_counts[mo_name] = self.row_counts.get(mo_name, 0) + 1
-        self.buffered += 1
-        if self.buffered >= _SPILL_ROWS:
+        self.buffered_bytes += size
+        if self.buffered_bytes >= _SPILL_BYTES:
             self._spill()
 
     def _spool_path(self, mo_name):
@@ -163,7 +172,7 @@ class TxtSink:
                     marshal.dump(rows, f)
                 self.spooled.add(mo_name)
                 self.buffers[mo_name] = []
-        self.buffered = 0
+        self.buffered_bytes = 0
 
     def _iter_rows(self, mo_name):
         if mo_name in self.spooled:
@@ -415,17 +424,21 @@ def main():
     parser.add_argument("output_dir", nargs="?", help="Folder for <MO>.txt (default: input_dir)")
     parser.add_argument("--file-list", help="Text file with one input path per line (.zip/.xml/.xml.gz)")
     parser.add_argument("--out", help="Output folder (required with --file-list)")
+    parser.add_argument("--include-nr-relations", action="store_true",
+                        help="Keep the EUtranCellRelation under NRCellCU (5G -> 4G) in EUtranCellRelation.txt. "
+                             "Claro needs them (PSCell audit); the Vivo enrichment expects 4G relations only.")
     args = parser.parse_args()
 
     if args.file_list:
         if not args.out:
             parser.error("--out is required with --file-list")
-        with open(args.file_list, "r", encoding="utf-8") as f:
+        # utf-8-sig: a list saved by Windows tools may start with a BOM.
+        with open(args.file_list, "r", encoding="utf-8-sig") as f:
             inputs = [line.strip() for line in f if line.strip()]
         if not inputs:
             print("File list is empty.")
             sys.exit(1)
-        parse_ericsson_xmls(inputs, os.path.abspath(args.out))
+        parse_ericsson_xmls(inputs, os.path.abspath(args.out), include_nr_relations=args.include_nr_relations)
         return
 
     if not args.input_dir:
@@ -439,7 +452,7 @@ def main():
         print(f"Input directory not found: {input_dir}")
         sys.exit(1)
 
-    parse_ericsson_xmls(input_dir, output_dir)
+    parse_ericsson_xmls(input_dir, output_dir, include_nr_relations=args.include_nr_relations)
 
 
 if __name__ == "__main__":

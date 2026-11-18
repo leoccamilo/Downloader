@@ -1,5 +1,25 @@
 ﻿# Alterações Realizadas
 
+## 2026-11-18 — Claro, fase 2: parser validado no dump da rede inteira de PR
+
+- `xml_to_txt.py` testado no `PR_mob_W42.zip` (XML de 4,2 GB): 21 MOs com
+  conteúdo idêntico ao conversor do MoB_Claro, em ~2,5 min e ~1,36 GB de RAM.
+- Nova opção `--include-nr-relations` (ligada pelo servidor só para a Claro):
+  mantém as `EUtranCellRelation` 5G→4G (91.650 na W42) que o audit PSCell da
+  Claro usa. A Vivo continua sem elas, como antes.
+- A lista de arquivos do parser aceita BOM no início (arquivos salvos por
+  ferramentas do Windows).
+- Memória do parser: o buffer passa a ser limitado por tamanho estimado (64 MB)
+  em vez de 200 mil linhas. TXTs idênticos byte a byte (SHA256) antes e depois,
+  mesmo tempo:
+  - Vivo BARA (8,8 GB de XML, 88 MOs): 446 s / 444 MB → 440 s / 131 MB.
+  - Claro PR W42 (4,2 GB de XML, 21 MOs): 187 s / 1.358 MB → 184 s / 142 MB.
+  - Vivo, dump semanal inteiro de 16/11 (BARA + BARB + CTPB, 37,8 GB de XML,
+    modo Vivo, as duas versões rodando juntas): 1.652 s / 436 MB → 1.581 s / 120 MB;
+    os 90 TXTs (7,26 GB) idênticos.
+- Testes: `tests/test_xml_to_txt_cli.py` (inclui spool × sem spool) e caso novo em
+  `tests/test_operator_profiles.py`.
+
 ## 2026-11-18 — Operadora VIVO | CLARO (fase 1) e tema por operadora
 
 - Botão VIVO | CLARO no cabeçalho. Cada operadora tem as próprias

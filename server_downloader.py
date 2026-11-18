@@ -1005,7 +1005,8 @@ def _run_step(python_exe, script, args):
     return lines, proc.returncode or 0
 
 
-def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files=None):
+def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files=None,
+                           include_nr_relations=False):
     """Pipeline: ZIP/XML -> one TXT per MO -> (optional) enrich 4/5/6.
 
     Input is either a list of files (.zip/.xml/.xml.gz) or a folder containing them.
@@ -1038,6 +1039,9 @@ def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, e
         args = [XML_TO_TXT_SCRIPT, "--file-list", list_path, "--out", txt_dir]
     else:
         args = [XML_TO_TXT_SCRIPT, input_dir, txt_dir]
+    if include_nr_relations:
+        # Claro keeps the 5G -> 4G EUtranCellRelation (PSCell audit), like the MoB_Claro converter.
+        args.append("--include-nr-relations")
     try:
         for line in _stream_run_script(python_exe, XML_TO_TXT_SCRIPT, args):
             yield line
@@ -1125,7 +1129,8 @@ def api_run_parser_pipeline():
     if not output_dir:
         return Response("output_dir required\n", status=400, mimetype="text/plain")
     return _workflow_response(
-        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files)
+        stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files,
+                               include_nr_relations=_request_operator() == op_profiles.CLARO)
     )
 
 

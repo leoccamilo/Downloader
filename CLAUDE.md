@@ -47,11 +47,25 @@ Benchmark (dump real de 196 MB, 85 MOs): antigo 11,7 s / pico 590 MB;
 (latin-1, CRLF, colunas na ordem de aparição). Também não precisa de pyarrow/pandas.
 
 - ZIPs são lidos no lugar (`zipfile` + `iterparse` no stream) — sem extrair para disco.
-- Memória limitada: acima de `_SPILL_ROWS` linhas, o buffer vai para um spool
-  (`.xml_to_txt_spool/`, `marshal`) e cada `<MO>.txt` é montado no final.
+- Memória limitada: quando o buffer passa de `_SPILL_BYTES` (tamanho estimado dos
+  objetos Python, 64 MB), ele vai para um spool (`.xml_to_txt_spool/`, `marshal`) e
+  cada `<MO>.txt` é montado no final. O limite é por **bytes**, não por linhas: linha
+  de relação tem ~50 colunas e a de `EUtranCellFDD` centenas. Antes era 200 mil linhas,
+  o que dava 1,36 GB de pico no dump de PR. A leitura do XML sozinha usa ~22 MB:
+  quase toda a memória é o buffer. O momento do spool não muda o TXT (teste
+  `SpillTests`). Dump semanal da Vivo inteiro (37,8 GB de XML, 90 MOs): pico
+  436 → 120 MB, ~26 min, TXTs idênticos.
 - Ao ler uma pasta, um ZIP cujo XML já está extraído ao lado é ignorado (evita linhas duplicadas).
 - Se mexer no formato de saída, validar comparando SHA256 dos TXTs com a versão anterior:
   os `post_process_*.py` dependem desse formato.
+- **Claro (validado em 18/11/2026):** no dump da rede inteira de PR (`PR_mob_W42.zip`,
+  XML único de 4,2 GB) o `xml_to_txt.py` gerou os 21 MOs com conteúdo idêntico ao
+  conversor do MoB_Claro (comparação por conteúdo; muda só ordem de colunas, encoding
+  e colunas sempre vazias). ~3 min; pico de 142 MB de RAM. Para a Claro o
+  servidor passa `--include-nr-relations`: mantém as 91.650 `EUtranCellRelation`
+  sob `NRCellCU` (5G→4G, usadas no audit PSCell). Na Vivo o padrão continua 4G-only.
+- O dump da Claro não tem nenhum caractere fora de ASCII; mesmo assim, código da Claro
+  que ler estes TXT deve usar latin-1 (o encoding que o parser grava), não utf-8.
 
 ## Arquitetura: server vs subprocessos
 
