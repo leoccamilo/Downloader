@@ -1,5 +1,28 @@
 ﻿# Alterações Realizadas
 
+## 2026-11-18 — Operadora VIVO | CLARO (fase 1) e tema por operadora
+
+- Botão VIVO | CLARO no cabeçalho. Cada operadora tem as próprias
+  configurações no navegador: a Vivo continua com as chaves de sempre (nada
+  muda para ela); a Claro usa as mesmas chaves com o prefixo `claro:`. Trocar
+  recarrega a página e é bloqueado enquanto houver dump/parser/audit rodando.
+- Claro: lista de ENMs própria e editável (vem com `ENMSANTURCE` =
+  `https://renmsanturce.prt.local/`), pasta raiz editável (padrão
+  `C:/Claro_Reports`, com `Dumps`, `MOs`, `Cellref`, `Exports`) e escopo por
+  rede inteira (`-n *`), região ou município (`-n CAR*;SJU*`), a partir do
+  cadastro de 78 municípios / 5 regiões do Portal RAN PR.
+- Claro, nesta fase: Run All = dump + XML/ZIP → TXT. Notebooks 3–6, cellrefs,
+  enriquecimento e audits da Vivo ficam bloqueados para a Claro no servidor
+  (`operator_profiles.py`), com mensagem clara, antes de qualquer subprocesso.
+- Trava de pastas: a Claro não lê nem grava as pastas da Vivo (`C:/Camilo`,
+  `C:/Vivo Reports`, `C:/Dumps`, `C:/Cellref`, `C:/MoB`...) e a Vivo não usa a
+  raiz da Claro nem `C:/MoB_Claro`. Na Claro, o dump (que apaga a própria pasta)
+  não pode apontar para a raiz.
+- Tema no padrão do Portal RAN: cabeçalho branco com filete da marca, logos
+  Amdocs e da operadora, roxo Vivo `#660099` ou vermelho Claro `#C8102E`, e
+  tema claro/escuro.
+- Testes: `tests/test_operator_profiles.py` e `tests/test_operator_storage.cjs`.
+
 ## 2026-11-08 — Rotina semanal completa
 
 - Pasta única das referências no primeiro cartão da aba ENM Dump; removidos

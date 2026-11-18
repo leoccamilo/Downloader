@@ -1,0 +1,661 @@
+{
+  "source": "nuevas Regione ClaroPR.csv",
+  "regions": [
+    {
+      "id": "centro_norte",
+      "label": "Centro Norte",
+      "label_en": "North Central",
+      "source_label": "Region Centro Norte"
+    },
+    {
+      "id": "metro_este",
+      "label": "Metro Este",
+      "label_en": "Metro East",
+      "source_label": "Region Metro Este"
+    },
+    {
+      "id": "oeste",
+      "label": "Oeste",
+      "label_en": "West",
+      "source_label": "Region Oeste"
+    },
+    {
+      "id": "sur",
+      "label": "Sur",
+      "label_en": "South",
+      "source_label": "Region Sur"
+    },
+    {
+      "id": "sur_este",
+      "label": "Sur Este",
+      "label_en": "Southeast",
+      "source_label": "Region Sur Este"
+    }
+  ],
+  "municipalities": [
+    {
+      "code": "ABU",
+      "name": "Aguas Buenas",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 18.2567259,
+      "longitude": -66.1264368
+    },
+    {
+      "code": "ADJ",
+      "name": "Adjuntas",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.1815604,
+      "longitude": -66.7581472
+    },
+    {
+      "code": "AGD",
+      "name": "Aguada",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.3756808,
+      "longitude": -67.1837074
+    },
+    {
+      "code": "AGL",
+      "name": "Aguadilla",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.480256,
+      "longitude": -67.1439097
+    },
+    {
+      "code": "AIB",
+      "name": "Aibonito",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 18.1297152,
+      "longitude": -66.266406
+    },
+    {
+      "code": "ANA",
+      "name": "Añasco",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.2869358,
+      "longitude": -67.131246
+    },
+    {
+      "code": "ARE",
+      "name": "Arecibo",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.4339836,
+      "longitude": -66.6753225
+    },
+    {
+      "code": "ARR",
+      "name": "Arroyo",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 17.9720598,
+      "longitude": -66.0419452
+    },
+    {
+      "code": "BAY",
+      "name": "Bayamón",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3499294,
+      "longitude": -66.1679221
+    },
+    {
+      "code": "BCL",
+      "name": "Barceloneta",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.4699891,
+      "longitude": -66.5582299
+    },
+    {
+      "code": "BQT",
+      "name": "Barranquitas",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.1990137,
+      "longitude": -66.3097816
+    },
+    {
+      "code": "CAB",
+      "name": "Cabo Rojo",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.0088725,
+      "longitude": -67.2098839
+    },
+    {
+      "code": "CAG",
+      "name": "Caguas",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.2111085,
+      "longitude": -66.0509642
+    },
+    {
+      "code": "CAM",
+      "name": "Camuy",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.4473241,
+      "longitude": -66.862637
+    },
+    {
+      "code": "CAN",
+      "name": "Canóvanas",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3298437,
+      "longitude": -65.8851504
+    },
+    {
+      "code": "CAR",
+      "name": "Carolina",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3967757,
+      "longitude": -65.9687781
+    },
+    {
+      "code": "CAT",
+      "name": "Cataño",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.4419335,
+      "longitude": -66.145498
+    },
+    {
+      "code": "CAY",
+      "name": "Cayey",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.1049228,
+      "longitude": -66.1515252
+    },
+    {
+      "code": "CEI",
+      "name": "Ceiba",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.2737491,
+      "longitude": -65.5308947
+    },
+    {
+      "code": "CIA",
+      "name": "Ciales",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.2910736,
+      "longitude": -66.5133078
+    },
+    {
+      "code": "CID",
+      "name": "Cidra",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.1742703,
+      "longitude": -66.1613351
+    },
+    {
+      "code": "COA",
+      "name": "Coamo",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.1037997,
+      "longitude": -66.3575861
+    },
+    {
+      "code": "COM",
+      "name": "Comerío",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.2248867,
+      "longitude": -66.2200322
+    },
+    {
+      "code": "COR",
+      "name": "Corozal",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.3039098,
+      "longitude": -66.3261794
+    },
+    {
+      "code": "CUL",
+      "name": "Culebra",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.3242413,
+      "longitude": -65.3067405
+    },
+    {
+      "code": "DOR",
+      "name": "Dorado",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.4732598,
+      "longitude": -66.2603935
+    },
+    {
+      "code": "FAJ",
+      "name": "Fajardo",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.3450524,
+      "longitude": -65.6427259
+    },
+    {
+      "code": "FLO",
+      "name": "Florida",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.3725509,
+      "longitude": -66.5583406
+    },
+    {
+      "code": "GNC",
+      "name": "Guánica",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 17.9480521,
+      "longitude": -66.9229888
+    },
+    {
+      "code": "GUR",
+      "name": "Gurabo",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.2725814,
+      "longitude": -65.9811768
+    },
+    {
+      "code": "GYB",
+      "name": "Guaynabo",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3443566,
+      "longitude": -66.1140555
+    },
+    {
+      "code": "GYL",
+      "name": "Guayanilla",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.0052626,
+      "longitude": -66.7983564
+    },
+    {
+      "code": "GYM",
+      "name": "Guayama",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 17.9739286,
+      "longitude": -66.1374674
+    },
+    {
+      "code": "HAT",
+      "name": "Hatillo",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.4411408,
+      "longitude": -66.7982101
+    },
+    {
+      "code": "HOR",
+      "name": "Hormigueros",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.1355925,
+      "longitude": -67.1136453
+    },
+    {
+      "code": "HUM",
+      "name": "Humacao",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.1354025,
+      "longitude": -65.7862285
+    },
+    {
+      "code": "ISA",
+      "name": "Isabela",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.4852958,
+      "longitude": -67.013989
+    },
+    {
+      "code": "JAY",
+      "name": "Jayuya",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.2108966,
+      "longitude": -66.5869769
+    },
+    {
+      "code": "JUA",
+      "name": "Juana Díaz",
+      "region_id": "sur",
+      "uprf": false,
+      "latitude": 17.9981748,
+      "longitude": -66.4914725
+    },
+    {
+      "code": "JUN",
+      "name": "Juncos",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.2241334,
+      "longitude": -65.9085416
+    },
+    {
+      "code": "LAJ",
+      "name": "Lajas",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 17.9785111,
+      "longitude": -67.0401109
+    },
+    {
+      "code": "LAR",
+      "name": "Lares",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.2708993,
+      "longitude": -66.8663749
+    },
+    {
+      "code": "LMA",
+      "name": "Las Marías",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.2275958,
+      "longitude": -66.9775803
+    },
+    {
+      "code": "LOI",
+      "name": "Loíza",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.4750387,
+      "longitude": -65.90328
+    },
+    {
+      "code": "LPI",
+      "name": "Las Piedras",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.187201,
+      "longitude": -65.8711961
+    },
+    {
+      "code": "LUQ",
+      "name": "Luquillo",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3679603,
+      "longitude": -65.7099453
+    },
+    {
+      "code": "MAN",
+      "name": "Manatí",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.4498424,
+      "longitude": -66.4873151
+    },
+    {
+      "code": "MAR",
+      "name": "Maricao",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.1739044,
+      "longitude": -66.9359311
+    },
+    {
+      "code": "MAU",
+      "name": "Maunabo",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 17.9997861,
+      "longitude": -65.8964028
+    },
+    {
+      "code": "MAY",
+      "name": "Mayagüez",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.0838502,
+      "longitude": -67.886337
+    },
+    {
+      "code": "MOC",
+      "name": "Moca",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.3777509,
+      "longitude": -67.0803438
+    },
+    {
+      "code": "MOR",
+      "name": "Morovis",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.3183859,
+      "longitude": -66.4180342
+    },
+    {
+      "code": "NAG",
+      "name": "Naguabo",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.2110696,
+      "longitude": -65.735749
+    },
+    {
+      "code": "NAR",
+      "name": "Naranjito",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.2899272,
+      "longitude": -66.2534401
+    },
+    {
+      "code": "ORO",
+      "name": "Orocovis",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.2159754,
+      "longitude": -66.4339714
+    },
+    {
+      "code": "PAT",
+      "name": "Patillas",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 18.0003111,
+      "longitude": -65.9866424
+    },
+    {
+      "code": "PEN",
+      "name": "Peñuelas",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.0266178,
+      "longitude": -66.7281248
+    },
+    {
+      "code": "PON",
+      "name": "Ponce",
+      "region_id": "sur",
+      "uprf": false,
+      "latitude": 18.0017167,
+      "longitude": -66.6066624
+    },
+    {
+      "code": "QUE",
+      "name": "Quebradillas",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.469833,
+      "longitude": -66.9204375
+    },
+    {
+      "code": "RGR",
+      "name": "Río Grande",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3763694,
+      "longitude": -65.7984341
+    },
+    {
+      "code": "RIN",
+      "name": "Rincón",
+      "region_id": "oeste",
+      "uprf": false,
+      "latitude": 18.3405617,
+      "longitude": -67.2773015
+    },
+    {
+      "code": "SAL",
+      "name": "Salinas",
+      "region_id": "sur",
+      "uprf": false,
+      "latitude": 17.9714853,
+      "longitude": -66.2622515
+    },
+    {
+      "code": "SGE",
+      "name": "San Germán",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.1077964,
+      "longitude": -67.0372562
+    },
+    {
+      "code": "SGR",
+      "name": "Sabana Grande",
+      "region_id": "sur",
+      "uprf": false,
+      "latitude": 18.0830003,
+      "longitude": -66.9433357
+    },
+    {
+      "code": "SIS",
+      "name": "Santa Isabel",
+      "region_id": "sur",
+      "uprf": false,
+      "latitude": 17.9529216,
+      "longitude": -66.3875884
+    },
+    {
+      "code": "SJU",
+      "name": "San Juan",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.4223633,
+      "longitude": -66.0680934
+    },
+    {
+      "code": "SLO",
+      "name": "San Lorenzo",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 18.1471073,
+      "longitude": -65.9761674
+    },
+    {
+      "code": "SSE",
+      "name": "San Sebastián",
+      "region_id": "oeste",
+      "uprf": true,
+      "latitude": 18.3314094,
+      "longitude": -66.9706783
+    },
+    {
+      "code": "TAL",
+      "name": "Toa Alta",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.3645557,
+      "longitude": -66.2446686
+    },
+    {
+      "code": "TBA",
+      "name": "Toa Baja",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.4473096,
+      "longitude": -66.197518
+    },
+    {
+      "code": "TRU",
+      "name": "Trujillo Alto",
+      "region_id": "metro_este",
+      "uprf": false,
+      "latitude": 18.3370627,
+      "longitude": -66.0002036
+    },
+    {
+      "code": "UTU",
+      "name": "Utuado",
+      "region_id": "centro_norte",
+      "uprf": true,
+      "latitude": 18.2704787,
+      "longitude": -66.7029603
+    },
+    {
+      "code": "VAL",
+      "name": "Vega Alta",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.4360963,
+      "longitude": -66.3362631
+    },
+    {
+      "code": "VBA",
+      "name": "Vega Baja",
+      "region_id": "centro_norte",
+      "uprf": false,
+      "latitude": 18.4550266,
+      "longitude": -66.3977734
+    },
+    {
+      "code": "VIE",
+      "name": "Vieques",
+      "region_id": "sur_este",
+      "uprf": true,
+      "latitude": 18.125418,
+      "longitude": -65.432474
+    },
+    {
+      "code": "VIL",
+      "name": "Villalba",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.1266511,
+      "longitude": -66.4752296
+    },
+    {
+      "code": "YAB",
+      "name": "Yabucoa",
+      "region_id": "sur_este",
+      "uprf": false,
+      "latitude": 18.0566351,
+      "longitude": -65.8621578
+    },
+    {
+      "code": "YAU",
+      "name": "Yauco",
+      "region_id": "sur",
+      "uprf": true,
+      "latitude": 18.0850516,
+      "longitude": -66.8580089
+    }
+  ]
+}

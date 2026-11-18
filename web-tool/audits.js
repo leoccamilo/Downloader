@@ -9,14 +9,14 @@
   const selected = () => Array.from(document.querySelectorAll('.audit-checkbox:checked'), cb => cb.value);
   function savedSelection() {
     try {
-      const value = JSON.parse(localStorage.getItem(storageKey));
+      const value = JSON.parse(opStorage.getItem(storageKey));
       return Array.isArray(value) ? value : null;
     } catch (_) { return null; }
   }
   function syncSelection() {
     el('btn-run-audits').disabled = Boolean(controller) || selected().length === 0;
     el('btn-run-audits').innerHTML = `<i class="bi bi-play-fill"></i> Executar selecionados (${selected().length})`;
-    try { localStorage.setItem(storageKey, JSON.stringify(selected())); } catch (_) {}
+    try { opStorage.setItem(storageKey, JSON.stringify(selected())); } catch (_) {}
   }
   function badge(id, label, style) {
     const node = el(`audit-state-${id}`);
@@ -38,7 +38,8 @@
       checkbox.className = 'form-check-input audit-checkbox m-0';
       checkbox.id = `audit-select-${item.id}`;
       checkbox.value = item.id;
-      checkbox.checked = previous === null ? item.ready : previous.includes(item.id);
+      checkbox.checked = !item.operator_blocked && (previous === null ? item.ready : previous.includes(item.id));
+      checkbox.disabled = Boolean(item.operator_blocked);
       checkbox.addEventListener('change', syncSelection);
       const label = document.createElement('label');
       label.className = 'fw-bold flex-grow-1';
@@ -79,7 +80,8 @@
       }
       row.append(detail);
       container.append(row);
-      badge(item.id, item.ready ? 'Disponível' : 'Entrada pendente', item.ready ? 'success' : 'warning');
+      if (item.operator_blocked) badge(item.id, 'Not available for Claro', 'secondary');
+      else badge(item.id, item.ready ? 'Disponível' : 'Entrada pendente', item.ready ? 'success' : 'warning');
     }
     syncSelection();
   }
@@ -96,7 +98,9 @@
       entries = result.audits;
       loaded = true;
       render(previous);
-      el('audits-summary').textContent = `${entries.filter(item => item.ready).length} de ${entries.length} audits com entradas disponíveis · semana ${result.week}. A verificação não confirma o conteúdo dos dados.`;
+      el('audits-summary').textContent = entries.some(item => item.operator_blocked)
+        ? `${entries.length} audits registered — all use Vivo rules and are blocked for Claro until ported.`
+        : `${entries.filter(item => item.ready).length} de ${entries.length} audits com entradas disponíveis · semana ${result.week}. A verificação não confirma o conteúdo dos dados.`;
     } catch (error) {
       entries = [];
       loaded = false;
@@ -173,6 +177,7 @@
       }
       controller = null;
       document.querySelectorAll('#tab-audits button, .audit-checkbox').forEach(node => { node.disabled = false; });
+      for (const item of entries) if (item.operator_blocked) el(`audit-select-${item.id}`).disabled = true;
       el('btn-cancel-audits').disabled = true;
       syncSelection();
     }

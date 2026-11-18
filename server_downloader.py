@@ -24,6 +24,7 @@ import tempfile
 import shutil
 import threading
 from bundled_sources import use_bundled_scripts
+import operator_profiles as op_profiles
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -408,8 +409,45 @@ def _infer_tech_from_row(rec, filename, cols):
 def add_cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Headers"] = ", ".join(
+        ("Content-Type", op_profiles.HEADER_OPERATOR, op_profiles.HEADER_CLARO_ROOT))
     return resp
+
+
+def _request_operator():
+    """Operator chosen in the UI (header); a missing header means Vivo."""
+    return op_profiles.normalize_operator(request.headers.get(op_profiles.HEADER_OPERATOR))
+
+
+@app.before_request
+def operator_guard():
+    """Refuse a job that would mix Vivo and Claro folders or rules, before it starts."""
+    if request.method != "POST" or not request.path.startswith("/api/") or request.path in op_profiles.GUARD_EXEMPT:
+        return None
+    operator = _request_operator()
+    if operator is None:
+        return Response("Unknown operator. Reload the page and choose VIVO or CLARO.\n", status=400, mimetype="text/plain")
+    payload = request.get_json(force=True, silent=True)
+    from urllib.parse import unquote
+    claro_root = unquote(request.headers.get(op_profiles.HEADER_CLARO_ROOT) or "")
+    error = op_profiles.check_request(operator, request.path, payload, claro_root)
+    if error:
+        return Response(f"ERROR: {error}\n", status=400, mimetype="text/plain")
+    return None
+
+
+@app.route("/api/busy")
+def api_busy():
+    """Whether a dump/parser/audit job is running (the operator switch waits for it)."""
+    return jsonify(busy=_workflow_lock.locked())
+
+
+@app.route("/api/claro/geography")
+def api_claro_geography():
+    try:
+        return jsonify(op_profiles.claro_geography())
+    except (OSError, ValueError, KeyError) as exc:
+        return jsonify(error=f"Claro geography file could not be read: {exc}"), 500
 
 
 @app.route("/")
@@ -843,7 +881,13 @@ def api_run_weekly_workflow():
 @app.route("/api/audits", methods=["GET"])
 def api_audits():
     from audit_workflow import catalog
-    return jsonify(catalog())
+    result = catalog()
+    if _request_operator() == op_profiles.CLARO:
+        # The registered audits implement Vivo rules; show them, but never run them on Claro data.
+        for item in result["audits"]:
+            item.update(ready=False, operator_blocked=True,
+                        problems=["Not available for Claro yet: this audit uses Vivo rules."])
+    return jsonify(result)
 
 
 @app.route("/api/run-audits", methods=["POST"])

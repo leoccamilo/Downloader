@@ -33,6 +33,25 @@ ENM dump + XML parsing + enrichment tool with a local web UI.
 - Runtime/generated files are ignored by Git.
 - Change history is maintained in `alteracoes.md`.
 
+## Operadora: VIVO | CLARO
+
+O botão no cabeçalho escolhe a operadora; a página recarrega com as
+configurações dela (ENMs, credenciais, pastas, escopo). A Vivo funciona como
+antes. A troca é bloqueada enquanto um dump, parser ou audit estiver rodando.
+
+Claro Puerto Rico (fase 1):
+- ENMs: lista própria e editável (padrão `ENMSANTURCE`, `https://renmsanturce.prt.local/`).
+- Pastas: uma raiz editável no cartão **Claro folders** (padrão `C:/Claro_Reports`).
+  Trocar a raiz move todas as pastas da Claro que ainda seguem a raiz antiga.
+- Escopo: rede inteira (`-n *`), por região ou por município — o nome do nó
+  começa com o código do município (`CAR1028_2` → `CAR*`). Cadastro em
+  `bundled_scripts/claro/claro_pr_geography.json` (cópia do Portal RAN PR).
+- Run All = dump + XML/ZIP → TXT. Processamento dos MOs (passos 3–6), cellref
+  pelo MANDO e audits da Claro virão nas próximas fases; até lá o servidor
+  recusa os fluxos com regras da Vivo quando a operadora é Claro.
+- A Claro nunca usa as pastas da Vivo, e a Vivo nunca usa as da Claro
+  (`operator_profiles.py`).
+
 ## Rotina de segunda-feira
 
 Abra `START_DOWNLOADER.bat`, configure os ENMs e o escopo e clique em **Run All**.
@@ -88,12 +107,8 @@ finais das pastas de referências e relatórios. Os outros arquivos exportados
 pelos notebooks para `MoB_IMP` continuam sendo gravados normalmente.
 O mesmo `EUtranCell_TDD_FDD.csv` também é atualizado em `LTE/LTE MOs`.
 
-Para usar os caminhos da Claro, escolha as pastas de referências, notebooks,
-saídas e histórico desejadas e desmarque **Transferir relatórios para a pasta
-Vivo** e **Incluir geração dos cellrefs Vivo no Run All**. O destino Vivo fica desabilitado e não é exigido nem utilizado na
-publicação. As pastas e a opção de transferência ficam salvas no navegador.
-O padrão das referências continua `C:/Camilo`. A geração usa os notebooks
-Vivo indicados; alterar pastas não converte suas regras para outra operadora.
+Para a Claro, use o botão **CLARO** no cabeçalho (seção "Operadora" acima):
+os notebooks desta rotina implementam regras da Vivo e não rodam em dados da Claro.
 
 Os padrões da tela e dos perfis antigos são migrados para a rotina semanal:
 BARA, BARB e CTPB selecionados; CTPA desmarcado. A seleção dos ENMs fica salva

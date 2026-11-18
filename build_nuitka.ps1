@@ -180,6 +180,7 @@ python -m nuitka `
     --include-data-dir=bundled_scripts=bundled_scripts `
     --include-data-files=bundled_scripts/audits/*.py=bundled_scripts/audits/ `
     --include-data-files=bundled_sources.py=bundled_sources.py `
+    --include-data-files=operator_profiles.py=operator_profiles.py `
     --include-data-files=dump_multiple_enms.py=dump_multiple_enms.py `
     --include-data-files=xml_to_txt.py=xml_to_txt.py `
     --include-data-files=weekly_workflow.py=weekly_workflow.py `

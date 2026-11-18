@@ -4,18 +4,52 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Downloader – ENM Dump</title>
+  <script>
+    /* Operator and theme before the first paint, so the page never flashes the other brand. */
+    (function () {
+      var operator = 'vivo', theme = 'claro';
+      try {
+        operator = localStorage.getItem('downloader_operator') === 'claro' ? 'claro' : 'vivo';
+        theme = localStorage.getItem('downloader_theme') === 'escuro' ? 'escuro' : 'claro';
+      } catch (e) {}
+      var root = document.documentElement;
+      root.setAttribute('data-operator', operator);
+      root.setAttribute('data-tema', theme);
+      root.setAttribute('data-bs-theme', theme === 'escuro' ? 'dark' : 'light');
+      document.title = 'Downloader – ' + (operator === 'claro' ? 'Claro PR' : 'Vivo');
+    })();
+  </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
-    <nav class="navbar navbar-dark px-3">
-      <span class="navbar-brand mb-0 h1">Downloader</span>
-      <div class="d-flex align-items-center gap-3">
-        <span class="nav-status small" id="nav-status">Ready</span>
+    <header class="app-header">
+      <div class="app-header-logo">
+        <img src="img/amdocs-logo-light-bg.png" alt="Amdocs" class="only-light">
+        <img src="img/amdocs-logo.png" alt="Amdocs" class="only-dark">
       </div>
-    </nav>
+      <div class="app-header-title">
+        <span class="app-brand">Downloader</span>
+        <span class="app-subtitle" data-only="vivo">ENM Dump · Vivo</span>
+        <span class="app-subtitle" data-only="claro">ENM Dump · Claro Puerto Rico</span>
+      </div>
+      <div class="app-header-actions">
+        <span class="nav-status small" id="nav-status">Ready</span>
+        <div class="operator-switch" role="radiogroup" aria-label="Operator">
+          <input type="radio" class="btn-check" name="operator" id="operator-vivo" value="vivo" autocomplete="off">
+          <label class="operator-option operator-option-vivo" for="operator-vivo">VIVO</label>
+          <input type="radio" class="btn-check" name="operator" id="operator-claro" value="claro" autocomplete="off">
+          <label class="operator-option operator-option-claro" for="operator-claro">CLARO</label>
+        </div>
+        <button class="app-theme-toggle" type="button" id="btn-theme" title="Light / dark theme" aria-label="Light / dark theme">
+          <i class="bi bi-moon-stars"></i>
+        </button>
+        <img src="img/vivo-logo.png" alt="Vivo" class="operator-logo" data-only="vivo">
+        <img src="img/claro-logo.png" alt="Claro" class="operator-logo" data-only="claro">
+      </div>
+    </header>
 
     <ul class="nav nav-tabs" id="mainTabs" role="tablist">
       <li class="nav-item" role="presentation">
@@ -73,6 +107,23 @@
         <div class="container-fluid">
           <div class="row g-3">
             <div class="col-lg-6">
+              <!-- Claro: one editable root for all Claro folders -->
+              <div class="card card-compact mb-3" data-only="claro">
+                <div class="card-header bg-primary text-white">
+                  <i class="bi bi-folder2"></i> Claro folders
+                </div>
+                <div class="card-body">
+                  <label class="form-label fw-bold small" for="claro-root-dir">Root folder</label>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control font-monospace" id="claro-root-dir" placeholder="C:/Claro_Reports">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-root" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                    <button class="btn btn-primary" type="button" id="btn-apply-claro-root"><i class="bi bi-check2"></i> Apply</button>
+                  </div>
+                  <p class="form-text small mb-0 mt-1">Dumps, TXT and reports of Claro live inside this folder (<code>Dumps</code>, <code>MOs</code>, <code>Cellref</code>). Changing it moves every Claro folder that still follows the old root; files already written stay where they are. Claro never reads or writes the Vivo folders.</p>
+                  <p class="small mb-0 mt-1" id="claro-root-status"></p>
+                </div>
+              </div>
+
               <!-- ENM Connection -->
               <div class="card card-compact mb-3">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
@@ -132,7 +183,7 @@
               </div>
 
               <!-- Site list: update from folder or load existing file -->
-              <div class="card card-compact mb-3" id="shared-references-card">
+              <div class="card card-compact mb-3" id="shared-references-card" data-only="vivo">
                 <div class="card-header bg-secondary text-white">
                   <i class="bi bi-geo-alt"></i> Referências 4G / 5G e lista de sites
                 </div>
@@ -165,8 +216,41 @@
                 </div>
               </div>
 
+              <!-- Claro scope: whole network / region / municipality (node name starts with the municipality code) -->
+              <div class="card card-compact mb-3" data-only="claro">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-geo"></i> Scope</span>
+                  <div>
+                    <button class="btn btn-outline-light btn-sm" type="button" id="btn-claro-scope-all">All</button>
+                    <button class="btn btn-outline-light btn-sm" type="button" id="btn-claro-scope-clear">Clear</button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="mb-2">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input claro-scope-radio" type="radio" name="claro-scope" id="claro-scope-network" value="network" checked>
+                      <label class="form-check-label small" for="claro-scope-network">Whole network</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input claro-scope-radio" type="radio" name="claro-scope" id="claro-scope-region" value="region">
+                      <label class="form-check-label small" for="claro-scope-region">By region</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input claro-scope-radio" type="radio" name="claro-scope" id="claro-scope-municipality" value="municipality">
+                      <label class="form-check-label small" for="claro-scope-municipality">By municipality</label>
+                    </div>
+                  </div>
+                  <div id="claro-scope-region-panel" class="claro-scope-panel" style="display:none;"></div>
+                  <div id="claro-scope-municipality-panel" class="claro-scope-panel" style="display:none;">
+                    <input type="search" class="form-control form-control-sm mb-2" id="claro-municipality-filter" placeholder="Filter by code or name (e.g. CAR, Bayamón)..." autocomplete="off">
+                    <div id="claro-municipality-list"></div>
+                  </div>
+                  <p class="small mb-0 mt-2 text-muted" id="claro-scope-summary">Whole network: every node of the selected ENMs.</p>
+                </div>
+              </div>
+
               <!-- Scope: By UF / By Municipality / By site list -->
-              <div class="card card-compact mb-3">
+              <div class="card card-compact mb-3" data-only="vivo">
                 <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
                   <span><i class="bi bi-geo"></i> Scope</span>
                   <div>
@@ -295,7 +379,7 @@
                     <button class="btn btn-success btn-sm" id="btn-execute-dump">
                       <i class="bi bi-play-fill"></i> Execute Dump
                     </button>
-                    <button class="btn btn-outline-secondary btn-sm" id="btn-export-site-list" title="Export current site list to a text file">
+                    <button class="btn btn-outline-secondary btn-sm" id="btn-export-site-list" title="Export current site list to a text file" data-only="vivo">
                       <i class="bi bi-file-earmark-text"></i> Export Site List
                     </button>
                   </div>
@@ -349,11 +433,14 @@
                     </div>
                   </div>
                   <hr class="my-2">
-                  <div class="mb-3">
+                  <div class="alert alert-secondary small py-2 mb-3" data-only="claro">
+                    <i class="bi bi-info-circle"></i> <strong>Claro:</strong> Run All = ENM dump → XML/ZIP to TXT (one file per MO). The Claro processing of the MOs (steps 3 to 6), the cellref from MANDO and the audits come in the next versions; the Vivo notebooks never run on Claro data.
+                  </div>
+                  <div class="mb-3" data-only="vivo">
                     <label class="form-label fw-bold small" for="parser-processed-dir">MOs tratados (etapas 3 a 6)</label>
                     <input class="form-control" id="parser-processed-dir" value="C:/Dumps/LTE_Total">
                   </div>
-                  <div class="border rounded p-2 mb-3">
+                  <div class="border rounded p-2 mb-3" data-only="vivo">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" id="chk-weekly-workflow" checked>
                       <label class="form-check-label fw-bold small" for="chk-weekly-workflow">Rotina completa dos notebooks (2 a 6)</label>
@@ -391,7 +478,7 @@
                       <p class="text-muted small mb-0">Mantém a numeração dos notebooks (%U + 1) e as subpastas LTE, 5G e MoB_IMP. Nova execução na mesma semana atualiza os mesmos arquivos.</p>
                     </div>
                   </div>
-                  <div id="legacy-enrichment-group">
+                  <div id="legacy-enrichment-group" data-only="vivo">
                   <div class="mb-3">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" id="chk-customize-txts">
@@ -400,7 +487,7 @@
                     <p class="text-muted small mb-0 ms-4">Run enrichment scripts (LTE FDD, TDD, 5G) using <code>cellref.xlsx</code>. Enriched files are saved to a separate directory.</p>
                   </div>
                   </div>
-                  <div id="enrich-options-group" style="display:none;">
+                  <div id="enrich-options-group" style="display:none;" data-only="vivo">
                     <div class="mb-3">
                       <label class="form-label fw-bold small">Enriched Files Directory (relatórios atuais)</label>
                       <div class="input-group input-group-sm">
@@ -428,7 +515,14 @@
 
       <div class="tab-pane fade" id="tab-cellref" role="tabpanel">
         <div class="container-fluid py-2">
-          <div class="card card-compact mb-3">
+          <div class="card card-compact mb-3" data-only="claro">
+            <div class="card-header bg-primary text-white"><i class="bi bi-geo-alt"></i> Claro cellref (MANDO)</div>
+            <div class="card-body">
+              <p class="small mb-2">The Claro cellref joins the whole-network dump with the physical parameters of <code>mando_cells_&lt;date&gt;.csv</code> (coordinates, azimuth, tilt, height, MIMO). It will be available here in a next version.</p>
+              <p class="small text-muted mb-0">The Vivo generators (portal files, Hotel de BTS) are not used for Claro.</p>
+            </div>
+          </div>
+          <div class="card card-compact mb-3" data-only="vivo">
             <div class="card-header bg-primary text-white"><i class="bi bi-geo-alt"></i> Atualização semanal dos cellrefs</div>
             <div class="card-body">
               <p class="small mb-2">Coloque os arquivos baixados do portal nas pastas de entrada abaixo. O Downloader executa <strong>LTE v2 → 5G v3 → passos 4 e 5</strong>, salva os cellrefs na pasta única de referências e atualiza a lista de sites. Usa o <strong>4_MOs_Camilo corrigido</strong> para preservar o site físico da célula em Hotel de BTS.</p>
@@ -469,6 +563,7 @@
           <div class="card card-compact mb-3">
             <div class="card-header bg-primary text-white"><i class="bi bi-clipboard-check"></i> Audits</div>
             <div class="card-body">
+              <div class="alert alert-secondary small py-2" data-only="claro"><i class="bi bi-info-circle"></i> <strong>Claro:</strong> these audits implement Vivo rules and are blocked for Claro. Each one is enabled after it is ported (same report and columns, Claro network rules).</div>
               <p>Execute os audits com os dados já processados. Os relatórios usam as pastas originais de cada notebook.</p>
               <p class="small text-muted">Confira se o dump, os relatórios semanais e os cellrefs estão atualizados antes de executar. A seleção roda na ordem abaixo e para na primeira falha. Arquivos existentes nos destinos serão atualizados.</p>
               <div class="d-flex flex-wrap gap-2 mb-3">

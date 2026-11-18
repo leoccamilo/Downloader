@@ -19,6 +19,23 @@ Downloader/
 └── dist_nuitka/              # Output do build — Downloader.exe
 ```
 
+## Operadora (Vivo × Claro PR)
+
+- `operator_profiles.py` é a fonte única das regras de operadora no servidor:
+  pastas proibidas para cada uma, endpoints só-Vivo, raiz da Claro, cadastro
+  de municípios. O `before_request` do `server_downloader.py` aplica a trava a
+  todo POST `/api/*` (cabeçalhos `X-Downloader-Operator` e `X-Downloader-Claro-Root`,
+  este com `encodeURIComponent`). Sem cabeçalho = Vivo.
+- Na tela, `opStorage` (topo do `app.js`) separa as configurações: Vivo = chaves
+  históricas sem prefixo (não renomear!), Claro = prefixo `claro:`. Elementos
+  de uma operadora só: atributo `data-only="vivo|claro"` no HTML.
+- Antes de habilitar qualquer fluxo para a Claro, ele precisa usar as regras
+  da Claro (skill `claro-rede-pr`): mesma saída da Vivo, só muda a regra da rede.
+  Base já validada no MoB_Claro (`regras_claro`, `pos_processamento_claro`,
+  `cadastro_claro`, audits) — copiar para dentro do Downloader, nunca importar do MoB.
+- Tema: variáveis `--marca*` em `styles.css`, trocadas por `html[data-operator]`;
+  claro/escuro por `html[data-tema]` + `data-bs-theme`.
+
 ## Parser XML — por que é XML → TXT direto (sem Parquet)
 
 Antes era `extract_dump.py` (extrai ZIP) → `xml_to_parquet.py` → `parquet_to_txt.py`.
