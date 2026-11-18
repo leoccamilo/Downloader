@@ -359,6 +359,15 @@
                       <label class="form-check-label fw-bold small" for="chk-weekly-workflow">Rotina completa dos notebooks (2 a 6)</label>
                     </div>
                     <p class="text-muted small ms-4 mb-2">Parser, relatórios LTE, Camilo, TDD e 5G, na mesma sequência da rotina de segunda-feira.</p>
+                    <div class="form-check mb-1">
+                      <input class="form-check-input" type="checkbox" id="chk-force-new-run">
+                      <label class="form-check-label small" for="chk-force-new-run">Ignorar retomada e iniciar nova execucao do zero</label>
+                    </div>
+                    <div class="form-check mb-1">
+                      <input class="form-check-input" type="checkbox" id="chk-resume-from-txt">
+                      <label class="form-check-label small" for="chk-resume-from-txt">Usar TXT existentes e pular dump/parser</label>
+                    </div>
+                    <p class="text-muted small ms-4 mb-2">Apos uma falha, Run All retoma do ultimo passo concluido. Use TXT existentes para continuar um processo anterior sem checkpoint; use nova execucao para baixar tudo novamente.</p>
                     <div id="weekly-options-group">
                       <p class="small mb-2"><i class="bi bi-check-circle"></i> Scripts da rotina semanal integrados ao Downloader.</p>
                       <p class="text-muted small mb-2">As referências vêm da pasta selecionada em <strong>Referências 4G / 5G e lista de sites</strong>. Configure a geração na aba <strong>Cellrefs</strong>.</p>

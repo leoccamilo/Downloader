@@ -11,13 +11,14 @@ from bundled_sources import CELLREF_SCRIPTS
 
 
 def report_directories(config, stack):
-    """Only disabled exports need transient report scratch space; no dump copies."""
+    """Use persistent scratch folders so a failed workflow can resume safely."""
     enriched = Path(config['enriched_dir'])
     vivo = Path(config.get('vivo_dir') or 'C:/Vivo Reports')
+    resume_root = Path(config.get('resume_state_path') or config['raw_txt_dir']).parent / '.downloader_resume'
     if not config.get('create_weekly', True):
-        enriched = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='downloader_reports_')))
+        enriched = resume_root / 'enriched'
     if not config.get('transfer_vivo', True):
-        vivo = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='downloader_reports_')))
+        vivo = resume_root / 'vivo'
     for directory in (enriched, vivo / 'LTE/LTE MOs', vivo / '5G/5G MOs', vivo / 'MoB_IMP'):
         directory.mkdir(parents=True, exist_ok=True)
     return enriched, vivo
@@ -44,11 +45,42 @@ def run_direct_workflow(config):
     manifest = dict(status='running', week=week, notebooks=[], warnings=warnings,
                     raw_txt_dir=str(raw), output_dir=str(processed), enriched_dir=config['enriched_dir'])
     manifest_path = raw / 'downloader_manifest.json'
+    state_path = Path(config.get('resume_state_path') or (raw / '.downloader_workflow_state.json'))
+    state_signature = config.get('resume_signature')
     try:
-        print(f'STEP 2/6: XML/ZIP → TXT em {raw} (sem extração dos ZIPs e sem Parquet)', flush=True)
-        written = parse_ericsson_xmls(inputs, str(raw), clear_existing=False, strict=True, include_nr_relations=True)
-        if not written:
-            raise ValueError('Nenhum MO foi convertido para TXT.')
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        state = {}
+    if state.get('workflow_signature') != state_signature:
+        state = {}
+    completed = set(state.get('completed_steps') or [])
+    if 'parser' in completed:
+        expected = state.get('parser_outputs') or []
+        if not expected or any(not (raw / name).is_file() or (raw / name).stat().st_size == 0 for name in expected):
+            # If a raw TXT was removed or truncated after checkpointing, all
+            # derived steps must be rebuilt from the parser output again.
+            completed.clear()
+
+    def save_state(status='running'):
+        state.update(status=status, workflow_signature=state_signature,
+                     completed_steps=sorted(completed), updated_at=datetime.now().isoformat(timespec='seconds'))
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_name(state_path.name + '.tmp')
+        temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+        temporary.replace(state_path)
+
+    try:
+        save_state()
+        if 'parser' in completed:
+            print(f'STEP 2/6: already completed; reusing TXT files in {raw}.', flush=True)
+        else:
+            print(f'STEP 2/6: XML/ZIP → TXT em {raw} (sem extração dos ZIPs e sem Parquet)', flush=True)
+            written = parse_ericsson_xmls(inputs, str(raw), clear_existing=False, strict=True, include_nr_relations=True)
+            if not written:
+                raise ValueError('Nenhum MO foi convertido para TXT.')
+            completed.add('parser')
+            state['parser_outputs'] = sorted(f'{mo}.txt' for mo in written)
+            save_state()
         with ExitStack() as stack:
             enriched, vivo = report_directories(config, stack)
             roots = [('C:/Camilo/SCIENCE.xlsx', references / 'SCIENCE.xlsx'),
@@ -56,18 +88,35 @@ def run_direct_workflow(config):
                      ('C:/Dumps/todos_enms', raw), ('C:/Dumps/LTE_Total', processed),
                      ('C:/Camilo', enriched), ('C:/Vivo Reports', vivo)]
             for step, name in enumerate(NOTEBOOKS[1:], 3):
+                step_key = f'notebook:{name}'
+                if step_key in completed:
+                    print(f'\nSTEP {step}/6: {name} already completed; skipping.', flush=True)
+                    continue
                 path = Path(config['notebook_dir']) / name
                 manifest['notebooks'].append(dict(name=name, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
                 print(f'\nSTEP {step}/6: {name}', flush=True)
                 execute_notebook(path, roots, week, warnings, txt_mode=True)
+                completed.add(step_key)
+                save_state()
             if (config.get('cellref') or {}).get('enabled'):
-                generate_direct_cellrefs(config, raw, processed, enriched, vivo, week, warnings)
-            publish_report_options(config, enriched, week)
-            publish_mob_imports(config, enriched)
+                if 'cellrefs' in completed:
+                    print('\nCELLREFS already completed; skipping.', flush=True)
+                else:
+                    generate_direct_cellrefs(config, raw, processed, enriched, vivo, week, warnings)
+                    completed.add('cellrefs')
+                    save_state()
+            if 'publish' not in completed:
+                publish_report_options(config, enriched, week)
+                publish_mob_imports(config, enriched)
+                completed.add('publish')
+                save_state()
         manifest['status'] = 'completed'
+        save_state('completed')
+        shutil.rmtree(state_path.parent / '.downloader_resume', ignore_errors=True)
         print('PIPELINE COMPLETED.', flush=True)
     except Exception as exc:
         manifest.update(status='failed', error=str(exc))
+        save_state('failed')
         raise
     finally:
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
@@ -92,7 +141,7 @@ def publish_report_options(config, enriched, week):
 def generate_direct_cellrefs(config, raw, processed, enriched, vivo, week, warnings, parameters=None):
     """Use original portal and output folders, without copying datasets."""
     import pandas as pd
-    from cellref_workflow import preflight_cellrefs, LTE_NOTEBOOK, NR_NOTEBOOK, science_from_cellref
+    from cellref_workflow import preflight_cellrefs, find_parameter, LTE_NOTEBOOK, NR_NOTEBOOK, science_from_cellref
     from weekly_workflow import execute_notebook, NOTEBOOKS, publish_file
     preflight_cellrefs(config, require_parameters=False)
     options = config.get('cellref') or {}
@@ -100,15 +149,25 @@ def generate_direct_cellrefs(config, raw, processed, enriched, vivo, week, warni
     nr = Path(options.get('nr_output_dir') or 'C:/Cellref/NR')
     for directory in (lte, nr):
         directory.mkdir(parents=True, exist_ok=True)
-    roots = [('C:/cellref/LTE_dump', Path(options.get('lte_input_dir') or 'C:/Cellref/LTE_dump')),
-             ('C:/cellref/NR_dump', Path(options.get('nr_input_dir') or 'C:/Cellref/NR_dump')),
-             ('C:/cellref/LTE', lte), ('C:/cellref/NR', nr),
-             ('C:/Vivo Reports/LTE/LTE MOs/SectorCarrier.csv', processed / 'SectorCarrier.txt'),
-             ('C:/Camilo', parameters or enriched), ('C:/Dumps/todos_enms', raw)]
-    for name in (LTE_NOTEBOOK, NR_NOTEBOOK):
-        print(f'CELLREF: {name}', flush=True)
-        execute_notebook(Path(options.get('scripts_dir') or CELLREF_SCRIPTS) / name,
-                         roots, week, warnings, txt_mode=True)
+    parameter_source = Path(parameters or options.get('parameter_dir') or config['enriched_dir'])
+    with tempfile.TemporaryDirectory(prefix='downloader_cellref_parameters_') as parameter_tmp:
+        staged_parameters = Path(parameter_tmp)
+        for filename in ('EUtranCell_TDD_FDD.txt', '5G_GNBDUFunction.txt',
+                         '5G_NRCellDU.txt', '5G_NRSectorCarrier.txt'):
+            source = find_parameter(parameter_source, filename)
+            shutil.copy2(source, staged_parameters / filename)
+            if filename.startswith('5G_'):
+                weekly_name = f'{Path(filename).stem}_{week}.txt'
+                shutil.copy2(source, staged_parameters / weekly_name)
+        roots = [('C:/cellref/LTE_dump', Path(options.get('lte_input_dir') or 'C:/Cellref/LTE_dump')),
+                 ('C:/cellref/NR_dump', Path(options.get('nr_input_dir') or 'C:/Cellref/NR_dump')),
+                 ('C:/cellref/LTE', lte), ('C:/cellref/NR', nr),
+                 ('C:/Vivo Reports/LTE/LTE MOs/SectorCarrier.csv', processed / 'SectorCarrier.txt'),
+                 ('C:/Camilo', staged_parameters), ('C:/Dumps/todos_enms', raw)]
+        for name in (LTE_NOTEBOOK, NR_NOTEBOOK):
+            print(f'CELLREF: {name}', flush=True)
+            execute_notebook(Path(options.get('scripts_dir') or CELLREF_SCRIPTS) / name,
+                             roots, week, warnings, txt_mode=True)
     references = Path(config['reference_dir'])
     for source in (lte / 'cellref.xlsx', nr / 'cellref_5g.xlsx'):
         frame = pd.read_excel(source)

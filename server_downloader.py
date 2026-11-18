@@ -15,6 +15,7 @@ import json
 import os
 import io
 import csv
+import hashlib
 import re
 import unicodedata
 import subprocess
@@ -54,6 +55,55 @@ AUDIT_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "audit_workflow.py")
 _workflow_lock = threading.Lock()
 # Default cellref path when using Downloader at C:\Downloader (e.g. portable)
 CELLREF_DEFAULT_PATH = "C:\\Downloader\\cellref"
+
+
+def _canonical_hash(value):
+    encoded = json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _workflow_input_fingerprint(data, dump_config):
+    """Fingerprint parser inputs without reading large dump contents into memory."""
+    if dump_config:
+        return {"dump_output_dir": os.path.abspath(dump_config.get("output_dir", ""))}
+    candidates = data.get("input_files") or [data.get("input_dir")]
+    files = []
+    for candidate in filter(None, candidates):
+        path = os.path.abspath(str(candidate))
+        if os.path.isdir(path):
+            try:
+                entries = [os.path.join(path, name) for name in os.listdir(path)]
+            except OSError:
+                entries = []
+        else:
+            entries = [path]
+        for entry in entries:
+            if not os.path.isfile(entry) or not entry.lower().endswith((".zip", ".xml", ".xml.gz")):
+                continue
+            try:
+                stat = os.stat(entry)
+            except OSError:
+                continue
+            files.append((os.path.normcase(entry), stat.st_size, stat.st_mtime_ns))
+    return sorted(files)
+
+
+def _read_workflow_state(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_workflow_state(path, state):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(state, handle, ensure_ascii=False, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
 
 
 def get_python_for_dump():
@@ -595,8 +645,10 @@ def _stream_checked_script(python_exe, script_path, args):
 
 
 def stream_weekly_workflow(data):
-    """Preflight, optional ENM extraction, then notebooks 2 through 6."""
+    """Preflight, resumable ENM extraction, then notebooks 2 through 6."""
     path = None
+    state_path = None
+    state = {}
     try:
         fd, path = tempfile.mkstemp(suffix=".json", prefix="weekly_workflow_")
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -616,20 +668,124 @@ def stream_weekly_workflow(data):
             required = json.loads(required_line.split("=", 1)[1])
             selected = dump_config.get("selected_mos") or []
             dump_config["selected_mos"] = list(dict.fromkeys(selected + required))
-            yield f"\nSTEP 1/6: ENM dump ({len(dump_config['selected_mos'])} MOs, including notebook lookups)...\n"
-            fd, dump_path = tempfile.mkstemp(suffix=".json", prefix="weekly_dump_")
+            state_path = os.path.join(os.path.abspath(dump_config["output_dir"]), ".downloader_workflow_state.json")
+        else:
+            raw_dir = data.get("raw_txt_dir") or data.get("output_dir") or data.get("input_dir")
+            state_path = os.path.join(os.path.abspath(raw_dir), ".downloader_workflow_state.json")
+
+        dump_signature = _canonical_hash(dump_config) if dump_config else None
+        workflow_options = {key: value for key, value in data.items()
+                            if key not in {"dump_config", "force_new_run", "resume_from_txt",
+                                           "resume_state_path", "resume_signature"}}
+        # Enabling Cellrefs after a failed base run should retain the completed
+        # parser/notebook checkpoints; Cellrefs itself is checkpointed separately.
+        if isinstance(workflow_options.get("cellref"), dict):
+            workflow_options["cellref"] = dict(workflow_options["cellref"])
+            workflow_options["cellref"].pop("enabled", None)
+        from weekly_workflow import NOTEBOOKS
+        script_versions = []
+        for folder, names in (
+            (workflow_options.get("notebook_dir"), NOTEBOOKS),
+            ((workflow_options.get("cellref") or {}).get("scripts_dir"),
+             ("cellref_LTE_v2.ipynb", "CellRef_5G_v3.ipynb")),
+        ):
+            if not folder:
+                continue
+            for name in names:
+                script = os.path.join(folder, name)
+                try:
+                    with open(script, "rb") as handle:
+                        script_versions.append((name, hashlib.sha256(handle.read()).hexdigest()))
+                except OSError:
+                    script_versions.append((name, "missing"))
+        workflow_signature = _canonical_hash({
+            "workflow": workflow_options,
+            "dump_signature": dump_signature,
+            "inputs": _workflow_input_fingerprint(data, dump_config),
+            "scripts": script_versions,
+        })
+        previous = _read_workflow_state(state_path)
+        dump_files_present = True
+        if dump_config:
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(dump_config, handle)
-                code = yield from _stream_checked_script(python_exe, DUMP_SCRIPT, [dump_path])
-                if code:
-                    raise RuntimeError("ENM dump failed. Notebook processing was not started.")
-            finally:
-                os.unlink(dump_path)
+                dump_files_present = any(
+                    name.lower().endswith((".zip", ".xml", ".xml.gz"))
+                    for name in os.listdir(dump_config["output_dir"])
+                )
+            except OSError:
+                dump_files_present = False
+        previous_steps = set(previous.get("completed_steps") or [])
+        parser_outputs = previous.get("parser_outputs") or []
+        raw_dir = os.path.abspath(data.get("raw_txt_dir") or (dump_config or {}).get("output_dir") or "")
+        parser_outputs_valid = (
+            "parser" in previous_steps and bool(parser_outputs)
+            and all(os.path.isfile(os.path.join(raw_dir, name))
+                    and os.path.getsize(os.path.join(raw_dir, name)) > 0 for name in parser_outputs)
+        )
+        can_resume = (
+            not data.get("force_new_run")
+            and previous.get("status") in {"running", "failed", "incomplete"}
+            and previous.get("dump_complete") is True
+            and (dump_files_present or parser_outputs_valid)
+            and previous.get("dump_signature") == dump_signature
+            and previous.get("workflow_signature") == workflow_signature
+        )
+        if can_resume:
+            state = previous
+            yield "\nRESUMING interrupted workflow: completed steps and the successful dump will be reused.\n"
+        else:
+            resume_from_txt = bool(data.get("resume_from_txt")) and not data.get("force_new_run")
+            existing_txt = []
+            if resume_from_txt:
+                raw_dir = os.path.abspath(data.get("raw_txt_dir") or (dump_config or {}).get("output_dir") or "")
+                try:
+                    existing_txt = [name for name in os.listdir(raw_dir)
+                                    if name.lower().endswith(".txt")
+                                    and os.path.getsize(os.path.join(raw_dir, name)) > 0]
+                except OSError:
+                    existing_txt = []
+                if not existing_txt:
+                    raise RuntimeError(f"No completed TXT files found in {raw_dir}; cannot skip the parser.")
+                yield f"\nRESUMING FROM EXISTING TXT: skipping dump and parser in {raw_dir}.\n"
+            elif dump_config:
+                yield f"\nSTEP 1/6: ENM dump ({len(dump_config['selected_mos'])} MOs, including notebook lookups)...\n"
+                fd, dump_path = tempfile.mkstemp(suffix=".json", prefix="weekly_dump_")
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                        json.dump(dump_config, handle)
+                    code = yield from _stream_checked_script(python_exe, DUMP_SCRIPT, [dump_path])
+                    if code:
+                        raise RuntimeError("ENM dump failed. Notebook processing was not started.")
+                finally:
+                    os.unlink(dump_path)
+            state = {"status": "incomplete", "dump_complete": True,
+                     "dump_signature": dump_signature, "workflow_signature": workflow_signature,
+                     "completed_steps": []}
+            if resume_from_txt:
+                state["completed_steps"] = ["parser"]
+                state["parser_outputs"] = sorted(existing_txt)
+
+        state.update(status="running", dump_complete=True,
+                     dump_signature=dump_signature, workflow_signature=workflow_signature)
+        _write_workflow_state(state_path, state)
+        workflow_data = {key: value for key, value in data.items() if key != "dump_config"}
+        workflow_data["resume_state_path"] = state_path
+        workflow_data["resume_signature"] = workflow_signature
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(workflow_data, handle)
         code = yield from _stream_checked_script(python_exe, WEEKLY_WORKFLOW_SCRIPT, [path])
         if code:
             raise RuntimeError("Notebook processing failed. Check the cell and manifest above.")
     except Exception as exc:
+        if state_path and state:
+            try:
+                latest = _read_workflow_state(state_path)
+                if latest.get("workflow_signature") == state.get("workflow_signature"):
+                    state = latest
+                state["status"] = "failed"
+                _write_workflow_state(state_path, state)
+            except OSError:
+                pass
         yield f"\nERROR: {exc}\nPIPELINE FAILED.\n"
     finally:
         if path and os.path.exists(path):

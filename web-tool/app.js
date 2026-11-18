@@ -1744,6 +1744,8 @@ function getParserPayload(overrideInputDir) {
   };
   payload.weekly_workflow = document.getElementById('chk-weekly-workflow').checked;
   if (payload.weekly_workflow) {
+    payload.force_new_run = document.getElementById('chk-force-new-run').checked;
+    payload.resume_from_txt = document.getElementById('chk-resume-from-txt').checked;
     payload.reference_dir = cellrefDir;
     payload.create_weekly = document.getElementById('chk-create-weekly').checked;
     payload.history_dir = document.getElementById('weekly-history-dir').value.trim();
@@ -2424,6 +2426,16 @@ function init() {
   }
 
   const weeklyMode = document.getElementById('chk-weekly-workflow');
+  // One-time migration: older browser storage may remember the old unchecked
+  // default. Keep the full notebook workflow enabled unless the user changes it.
+  try {
+    const migrated = localStorage.getItem('downloader_weekly_workflow_default_v2') === 'true';
+    if (!migrated) {
+      weeklyMode.checked = true;
+      localStorage.setItem('downloader_chk-weekly-workflow', 'true');
+      localStorage.setItem('downloader_weekly_workflow_default_v2', 'true');
+    }
+  } catch (_) { weeklyMode.checked = true; }
   const syncWorkflowOptions = () => {
     const full = weeklyMode.checked;
     document.getElementById('weekly-options-group').style.display = full ? 'block' : 'none';

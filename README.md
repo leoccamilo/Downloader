@@ -36,6 +36,11 @@ ENM dump + XML parsing + enrichment tool with a local web UI.
 ## Rotina de segunda-feira
 
 Abra `START_DOWNLOADER.bat`, configure os ENMs e o escopo e clique em **Run All**.
+Se uma execucao falhar, clicar em **Run All** novamente retoma o ultimo passo
+concluido e reutiliza o dump bem-sucedido. Para iniciar uma coleta nova, marque
+**Ignorar retomada e iniciar nova execucao do zero**.
+Para continuar com TXT gerados por uma versao anterior, marque **Usar TXT
+existentes e pular dump/parser**.
 Na seção XML Parser, deixe marcada **Rotina completa dos notebooks (2 a 6)**.
 Na aba **Cellrefs**, informe as pastas de downloads e deixe marcada **Incluir
 geração dos cellrefs Vivo no Run All** para encadear a geração.
