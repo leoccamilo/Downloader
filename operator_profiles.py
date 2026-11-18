@@ -9,10 +9,10 @@ every API call (header ``X-Downloader-Operator``). Rules here:
 - Vivo folders are the fixed defaults used by the notebooks; the Claro root is
   editable in the UI (default ``C:/Claro_Reports``) and travels in the header
   ``X-Downloader-Claro-Root``.
-- Until the Claro post-processing, cellrefs and audits are ported, the Vivo
-  notebook/enrichment endpoints are refused for Claro: running them on a
-  Claro dump would silently produce wrong reports (UF = eNB[-2:], Hotel de BTS,
-  PLMN 724/11...).
+- The Vivo notebook/enrichment endpoints are refused for Claro: running them
+  on a Claro dump would silently produce wrong reports (UF = eNB[-2:], Hotel
+  de BTS, PLMN 724/11...). The Claro processing of the MOs runs inside the
+  parser pipeline (pos_processamento_claro.py); cellrefs and audits come later.
 - A missing operator header means Vivo, so older clients keep working.
 """
 from __future__ import annotations
@@ -151,7 +151,13 @@ def check_request(operator: str, endpoint: str, payload, claro_root=None) -> str
         if reason:
             return f"Not available for Claro yet: {reason}. Switch to VIVO or wait for the Claro version."
         if endpoint == "/api/run-parser-pipeline" and isinstance(payload, dict) and payload.get("customize_txts"):
-            return "Not available for Claro yet: the enrichment scripts use Vivo rules. Uncheck Enrich Files."
+            # Claro "Process MOs" rewrites ENodeBFunction.txt, EUtranCellFDD.txt... with the same
+            # names: in the parsed TXT folder it would replace the parser output.
+            txt_dir = payload.get("output_dir") or payload.get("input_dir") or ""
+            processed = payload.get("enriched_dir") or txt_dir
+            if _norm(processed) == _norm(txt_dir):
+                return (f"The processed MOs folder must be different from the parsed TXT folder ({txt_dir}). "
+                        f"Use e.g. {str(claro_root or '').strip() or DEFAULT_CLARO_ROOT}/MOs.")
     root = str(claro_root or "").strip() or DEFAULT_CLARO_ROOT
     error = validate_claro_root(root)
     if error:

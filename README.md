@@ -46,9 +46,12 @@ Claro Puerto Rico (fase 1):
 - Escopo: rede inteira (`-n *`), por região ou por município — o nome do nó
   começa com o código do município (`CAR1028_2` → `CAR*`). Cadastro em
   `bundled_scripts/claro/claro_pr_geography.json` (cópia do Portal RAN PR).
-- Run All = dump + XML/ZIP → TXT. Processamento dos MOs (passos 3–6), cellref
-  pelo MANDO e audits da Claro virão nas próximas fases; até lá o servidor
-  recusa os fluxos com regras da Vivo quando a operadora é Claro.
+- Run All = dump + XML/ZIP → TXT + **Process MOs** (regras da Claro, fase 3):
+  grava em `C:/Claro_Reports/MOs` os mesmos arquivos do "Process MOs" do
+  MoB_Claro (município, região, site, setor por letra, PLMN 330/110, alvo das
+  relações e TermPoints). A pasta tem de ser diferente da dos TXT. Cellref pelo
+  MANDO e audits da Claro virão nas próximas fases; até lá o servidor recusa os
+  fluxos com regras da Vivo quando a operadora é Claro.
 - A Claro nunca usa as pastas da Vivo, e a Vivo nunca usa as da Claro
   (`operator_profiles.py`).
 

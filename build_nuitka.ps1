@@ -191,6 +191,9 @@ python -m nuitka `
     --include-data-files=post_process_4_camilo.py=post_process_4_camilo.py `
     --include-data-files=post_process_5_tdd.py=post_process_5_tdd.py `
     --include-data-files=post_process_6_5g.py=post_process_6_5g.py `
+    --include-data-files=regras_claro.py=regras_claro.py `
+    --include-data-files=enm_dump_claro.py=enm_dump_claro.py `
+    --include-data-files=pos_processamento_claro.py=pos_processamento_claro.py `
     --output-dir=dist_nuitka `
     --output-filename=Downloader.exe `
     launcher.py

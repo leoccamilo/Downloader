@@ -51,6 +51,7 @@ XML_TO_TXT_SCRIPT = os.path.join(SCRIPT_DIR, "xml_to_txt.py")
 POST_PROCESS_4_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_4_camilo.py")
 POST_PROCESS_5_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_5_tdd.py")
 POST_PROCESS_6_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_6_5g.py")
+CLARO_POST_PROCESS_SCRIPT = os.path.join(SCRIPT_DIR, "pos_processamento_claro.py")
 WEEKLY_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "weekly_workflow.py")
 AUDIT_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "audit_workflow.py")
 _workflow_lock = threading.Lock()
@@ -660,7 +661,8 @@ def _stream_checked_script(python_exe, script_path, args):
     try:
         processing_error = False
         for line in proc.stdout:
-            if script_path in (XML_TO_TXT_SCRIPT, POST_PROCESS_4_SCRIPT, POST_PROCESS_5_SCRIPT, POST_PROCESS_6_SCRIPT):
+            if script_path in (XML_TO_TXT_SCRIPT, POST_PROCESS_4_SCRIPT, POST_PROCESS_5_SCRIPT, POST_PROCESS_6_SCRIPT,
+                               CLARO_POST_PROCESS_SCRIPT):
                 if re.search(r"(?:^\s*ERROR\b|:\s*(?:ERROR|FAILED)\b)", line, re.I):
                     processing_error = True
             yield line if line.endswith("\n") else line + "\n"
@@ -1006,16 +1008,18 @@ def _run_step(python_exe, script, args):
 
 
 def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files=None,
-                           include_nr_relations=False):
+                           include_nr_relations=False, operator=op_profiles.VIVO):
     """Pipeline: ZIP/XML -> one TXT per MO -> (optional) enrich 4/5/6.
 
     Input is either a list of files (.zip/.xml/.xml.gz) or a folder containing them.
     ZIPs are read in place by xml_to_txt.py — no extraction step.
+    Claro: the enrichment is one step, pos_processamento_claro.py (Claro network rules).
     """
     python_exe = get_python_for_dump()
     txt_dir = output_dir or input_dir
     enr_dir = enriched_dir or txt_dir
-    total_steps = 4 if customize_txts else 1
+    claro = operator == op_profiles.CLARO
+    total_steps = (2 if claro else 4) if customize_txts else 1
 
     if input_files:
         yield f"Input:    {len(input_files)} file(s)\n"
@@ -1053,7 +1057,14 @@ def stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, e
                 pass
 
     # Optional: Enrich files
-    if customize_txts:
+    if customize_txts and claro:
+        yield "\n" + "=" * 50 + "\n"
+        yield f"STEP 2/{total_steps}: Process MOs (Claro network rules)...\n"
+        yield "=" * 50 + "\n"
+        args = [CLARO_POST_PROCESS_SCRIPT, txt_dir, enr_dir] + ([cellref_dir] if cellref_dir else [])
+        for line in _stream_run_script(python_exe, CLARO_POST_PROCESS_SCRIPT, args):
+            yield line
+    elif customize_txts:
         cellref = cellref_dir or CELLREF_DEFAULT_PATH
 
         yield "\n" + "=" * 50 + "\n"
@@ -1122,7 +1133,11 @@ def api_run_parser_pipeline():
     input_files = [str(f).strip().replace("/", os.sep) for f in raw_files if str(f).strip()]
     output_dir = (data.get("output_dir") or "").strip().replace("/", os.sep) or input_dir
     customize_txts = bool(data.get("customize_txts", False))
-    cellref_dir = (data.get("cellref_dir") or CELLREF_DEFAULT_PATH).strip().replace("/", os.sep)
+    operator = _request_operator()
+    claro = operator == op_profiles.CLARO
+    # The Vivo cellref default must never feed the Claro processing: no folder = no cellref.
+    default_cellref = "" if claro else CELLREF_DEFAULT_PATH
+    cellref_dir = (data.get("cellref_dir") or default_cellref).strip().replace("/", os.sep)
     enriched_dir = (data.get("enriched_dir") or "").strip().replace("/", os.sep) or output_dir
     if not input_dir and not input_files:
         return Response("input_dir or input_files required\n", status=400, mimetype="text/plain")
@@ -1130,7 +1145,7 @@ def api_run_parser_pipeline():
         return Response("output_dir required\n", status=400, mimetype="text/plain")
     return _workflow_response(
         stream_parser_pipeline(input_dir, output_dir, customize_txts, cellref_dir, enriched_dir, input_files,
-                               include_nr_relations=_request_operator() == op_profiles.CLARO)
+                               include_nr_relations=claro, operator=operator)
     )
 
 

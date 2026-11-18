@@ -1,5 +1,23 @@
 ﻿# Alterações Realizadas
 
+## 2026-11-18 — Claro, fase 3: "Process MOs" com as regras da Claro
+
+- Copiados do MoB_Claro (commit b9a443e), sem depender dele em tempo de execução:
+  `regras_claro.py`, `pos_processamento_claro.py` e `enm_dump_claro.py` (as 7
+  funções do `enm_dump.py` que o pós-processamento usa, sem alteração).
+- Na tela da Claro, o cartão do parser tem **Process MOs (Claro network rules)**
+  (ligado por padrão) e a pasta **Processed MOs folder** (`<raiz>/MOs`). O Run All
+  e o Run Parser da Claro fazem dump → TXT → MOs processados.
+- O servidor roda só o script da Claro (passo 2/2) quando a operadora é Claro.
+  Recusa a mesma pasta para TXT e MOs processados (os arquivos têm o mesmo nome)
+  e não usa o cellref padrão da Vivo como cadastro da Claro.
+- Validação no dump da rede inteira de PR (W42): os 19 arquivos gerados são
+  idênticos byte a byte aos do original do MoB, com e sem o cadastro
+  `C:/MoB_Claro/Cadastro`; também pela linha de comando e pelo servidor
+  (ZIP → TXT → MOs). Cerca de 15 s para a rede inteira.
+- Testes: `tests/test_pos_processamento_claro.py` e casos novos em
+  `tests/test_operator_profiles.py` (90 testes OK).
+
 ## 2026-11-18 — Claro, fase 2: parser validado no dump da rede inteira de PR
 
 - `xml_to_txt.py` testado no `PR_mob_W42.zip` (XML de 4,2 GB): 21 MOs com

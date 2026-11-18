@@ -1817,9 +1817,12 @@ function getParserPayload(overrideInputDir) {
     cellref_dir: cellrefDir.trim(),
     enriched_dir: enrichedDir.trim()
   };
-  // Claro: dump + XML->TXT only. The Vivo notebooks and enrichment never run on Claro data.
+  // Claro: dump + XML->TXT + Claro "Process MOs". The Vivo notebooks and enrichment never run on Claro data.
   payload.weekly_workflow = !IS_CLARO && document.getElementById('chk-weekly-workflow').checked;
-  if (IS_CLARO) payload.customize_txts = false;
+  if (IS_CLARO) {
+    payload.customize_txts = document.getElementById('chk-claro-process-mos').checked;
+    payload.enriched_dir = document.getElementById('claro-processed-dir').value.trim() || DEFAULT_PROCESSED_DIR;
+  }
   if (payload.weekly_workflow) {
     payload.force_new_run = document.getElementById('chk-force-new-run').checked;
     payload.resume_from_txt = document.getElementById('chk-resume-from-txt').checked;
@@ -2252,6 +2255,7 @@ const CLARO_PATH_DEFAULTS = () => ({
   'parser-input-dir': DEFAULT_DUMP_DIR,
   'parser-output-dir': DEFAULT_DUMP_DIR,
   'parser-processed-dir': DEFAULT_PROCESSED_DIR,
+  'claro-processed-dir': DEFAULT_PROCESSED_DIR,
   'parser-enriched-dir': DEFAULT_REPORT_DIR,
   'weekly-history-dir': DEFAULT_REPORT_DIR,
   'weekly-vivo-dir': '',
@@ -2536,6 +2540,17 @@ function initOperatorControls() {
   document.getElementById('btn-browse-claro-root').addEventListener('click', async () => {
     const path = await browseFolder(rootInput.value);
     if (path) rootInput.value = path;
+  });
+  const processedInput = document.getElementById('claro-processed-dir');
+  bindPathStorage('claro-processed-dir', 'downloader_claro_processed_dir');
+  document.getElementById('btn-browse-claro-processed').addEventListener('click', async () => {
+    const path = await browseFolder(processedInput.value);
+    if (path) { processedInput.value = path; processedInput.dispatchEvent(new Event('change')); }
+  });
+  const processChk = document.getElementById('chk-claro-process-mos');
+  try { if (opStorage.getItem('downloader_claro_process_mos') === '0') processChk.checked = false; } catch (_) {}
+  processChk.addEventListener('change', () => {
+    try { opStorage.setItem('downloader_claro_process_mos', processChk.checked ? '1' : '0'); } catch (_) {}
   });
   initClaroScope();
 }

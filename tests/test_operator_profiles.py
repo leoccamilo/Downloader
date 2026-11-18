@@ -1,5 +1,6 @@
 """Operator switch: Vivo and Claro never share folders or Vivo-only jobs."""
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -62,8 +63,16 @@ class CheckRequestTests(unittest.TestCase):
                          "/api/run-post-process-4", "/api/load-site-list"):
             self.assertIn("Not available for Claro", op.check_request(op.CLARO, endpoint, {}))
             self.assertIsNone(op.check_request(op.VIVO, endpoint, {}))
-        enrich = {"output_dir": "C:/Claro_Reports/Dumps", "customize_txts": True}
-        self.assertIn("Enrich Files", op.check_request(op.CLARO, "/api/run-parser-pipeline", enrich))
+
+    def test_claro_process_mos_needs_its_own_folder(self):
+        same = {"output_dir": "C:/Claro_Reports/Dumps", "customize_txts": True}
+        self.assertIn("must be different", op.check_request(op.CLARO, "/api/run-parser-pipeline", same))
+        same["enriched_dir"] = "c:\\claro_reports\\dumps\\"
+        self.assertIn("must be different", op.check_request(op.CLARO, "/api/run-parser-pipeline", same))
+        ok = {"output_dir": "C:/Claro_Reports/Dumps", "enriched_dir": "C:/Claro_Reports/MOs", "customize_txts": True}
+        self.assertIsNone(op.check_request(op.CLARO, "/api/run-parser-pipeline", ok))
+        vivo_cellref = dict(ok, cellref_dir="C:/Downloader/cellref")
+        self.assertIn("cellref_dir", op.check_request(op.CLARO, "/api/run-parser-pipeline", vivo_cellref))
 
     def test_geography_has_regions_and_municipalities(self):
         geography = op.claro_geography()
@@ -154,6 +163,41 @@ class ServerGuardTests(unittest.TestCase):
             self.server._stream_run_script = original_run
         self.assertIn("--include-nr-relations", captured[0])
         self.assertNotIn("--include-nr-relations", captured[1])
+
+    def test_claro_process_mos_runs_the_claro_script_only(self):
+        scripts = []
+        original_run = self.server._stream_run_script
+
+        def fake_run(python, script, args):
+            scripts.append((os.path.basename(script), args[1:]))
+            return iter(())
+
+        self.server._stream_run_script = fake_run
+        try:
+            body = {"input_dir": "C:/Claro_Reports/Dumps", "output_dir": "C:/Claro_Reports/Dumps",
+                    "enriched_dir": "C:/Claro_Reports/MOs", "customize_txts": True}
+            response = self.post("/api/run-parser-pipeline", body, "claro")
+            self.assertEqual(response.status_code, 200)
+            log = response.get_data(as_text=True)
+        finally:
+            self.server._stream_run_script = original_run
+        names = [name for name, _ in scripts]
+        self.assertEqual(names, ["xml_to_txt.py", "pos_processamento_claro.py"])
+        # No cellref folder sent: the Vivo default (C:/Downloader/cellref) must not be used.
+        self.assertEqual(len(scripts[1][1]), 2)
+        self.assertTrue(scripts[1][1][1].endswith("MOs"))
+        self.assertIn("STEP 2/2: Process MOs (Claro network rules)", log)
+
+        scripts.clear()
+        self.server._stream_run_script = fake_run
+        try:
+            body = {"input_dir": "C:/Dumps/todos_enms", "output_dir": "C:/Dumps/todos_enms",
+                    "enriched_dir": "C:/Camilo", "customize_txts": True}
+            self.post("/api/run-parser-pipeline", body).get_data()
+        finally:
+            self.server._stream_run_script = original_run
+        self.assertEqual([name for name, _ in scripts],
+                         ["xml_to_txt.py", "post_process_4_camilo.py", "post_process_5_tdd.py", "post_process_6_5g.py"])
 
     def test_cors_allows_operator_headers(self):
         response = self.client.get("/api/busy")

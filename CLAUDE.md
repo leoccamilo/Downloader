@@ -11,6 +11,9 @@ Downloader/
 ├── post_process_4_camilo.py  # Script subprocess — enriquecimento LTE FDD
 ├── post_process_5_tdd.py     # Script subprocess — enriquecimento TDD/FDD
 ├── post_process_6_5g.py      # Script subprocess — enriquecimento 5G NR
+├── pos_processamento_claro.py # Script subprocess — "Process MOs" da Claro (cópia do MoB_Claro)
+├── regras_claro.py           # Regras da rede Claro PR (cópia do MoB_Claro)
+├── enm_dump_claro.py         # 7 funções do enm_dump.py do MoB_Claro (cópia sem alteração)
 ├── requirements.txt          # Dependências de desenvolvimento (inclui lxml, etc.)
 ├── requirements_build.txt    # Dependências do BUILD Nuitka (apenas o que o server usa)
 ├── build_nuitka.ps1          # Script de build Nuitka
@@ -33,6 +36,16 @@ Downloader/
   da Claro (skill `claro-rede-pr`): mesma saída da Vivo, só muda a regra da rede.
   Base já validada no MoB_Claro (`regras_claro`, `pos_processamento_claro`,
   `cadastro_claro`, audits) — copiar para dentro do Downloader, nunca importar do MoB.
+- Fase 3 (feita): `regras_claro.py`, `pos_processamento_claro.py` e `enm_dump_claro.py`
+  copiados do MoB_Claro (commit b9a443e). Mudanças na cópia: imports locais, TXT lido
+  em latin-1, linha de comando, geografia de `bundled_scripts/claro/` e trava de
+  pasta com `operator_profiles.VIVO_ROOTS`. Na Claro, "Enrich Files" do servidor
+  roda só este script (`customize_txts` + `enriched_dir` ≠ pasta dos TXT; sem
+  `cellref_dir` = sem cadastro, nunca o cellref padrão da Vivo). Validação: rede
+  inteira de PR (W42), 19 arquivos idênticos byte a byte ao original, com e sem
+  cadastro. Ao trazer correção do MoB, comparar de novo do mesmo jeito.
+- Scripts novos que o servidor roda precisam de `--include-data-files` no
+  `build_nuitka.ps1` (o Nuitka ignora `.py` soltos).
 - Tema: variáveis `--marca*` em `styles.css`, trocadas por `html[data-operator]`;
   claro/escuro por `html[data-tema]` + `data-bs-theme`.
 
