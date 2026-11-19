@@ -1,5 +1,30 @@
 ﻿# Alterações Realizadas
 
+## 2026-11-19 — Claro, fase 4: cellref da Claro pelo MANDO
+
+- Copiado do MoB_Claro (commit b9a443e): `cadastro_claro.py`. A função `construir`
+  ficou igual ao original. Mudanças: import local de `regras_claro`, leitura dos
+  TXT em latin-1 e linha de comando
+  (`python cadastro_claro.py <pasta_txt> <mando.csv | pasta> <pasta_cellref>`).
+  Dada uma pasta, o script usa o `mando_cells_<data>.csv` (ou `.csv.zip`) de data
+  mais recente. Ele se recusa a gravar numa pasta da Vivo ou na pasta dos TXT.
+- Aba **Cellrefs** no modo Claro: pasta dos TXT da rede inteira, MANDO e pasta
+  de saída (`<raiz>/Cellref`), com o botão **Generate Claro cellref**. A rota é
+  `/api/run-claro-cellref`, só da Claro (`CLARO_ONLY_ENDPOINTS` em `operator_profiles.py`).
+  O "Process MOs" da Claro passou a ler o cadastro desta mesma pasta.
+- Validação na rede inteira de PR (W42 + MANDO de 09/11/2026: 14.913 células LTE,
+  5.759 NR e 1.052.788 relações, cerca de 34 s):
+  - Cópia × original, sobre os mesmos TXT do Downloader: os 8 arquivos de dados
+    são idênticos byte a byte (o `.xlsx` sem a data de criação). No
+    `cadastro_resumo.json` muda só a barra do caminho do MANDO.
+  - Cadeia completa (TXT do Downloader → cópia) × MoB (TXT do conversor do MoB →
+    original): os cellrefs, os alertas, as relações e o IP de X2 são idênticos.
+    `5G_NRCellDU.txt` e `Slot.txt` (cópias do TXT de entrada) têm o mesmo conteúdo
+    e mudam só a ordem das colunas.
+  - Pela tela (servidor + navegador): a saída é a mesma.
+- Testes: `tests/test_cadastro_claro.py` e um caso novo em
+  `tests/test_operator_profiles.py` (98 testes OK).
+
 ## 2026-11-18 — Claro, fase 3: "Process MOs" com as regras da Claro
 
 - Copiados do MoB_Claro (commit b9a443e), sem depender dele em tempo de execução:

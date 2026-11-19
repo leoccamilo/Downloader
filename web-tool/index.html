@@ -444,7 +444,7 @@
                       <input type="text" class="form-control" id="claro-processed-dir" value="C:/Claro_Reports/MOs">
                       <button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-processed" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
                     </div>
-                    <p class="text-muted small mb-0">Must be different from the parsed TXT folder: the processed files keep the MO names. Neighbors outside the dump are checked against the Claro cellref folder when it has <code>cellref_5g.xlsx</code> / <code>EUtranCell_TDD_FDD.csv</code>. The cellref from MANDO and the audits come in the next versions.</p>
+                    <p class="text-muted small mb-0">Must be different from the parsed TXT folder: the processed files keep the MO names. Neighbors outside the dump are checked against the Claro cellref folder when it has <code>cellref_5g.xlsx</code> / <code>EUtranCell_TDD_FDD.csv</code>. Generate it in the <strong>Cellrefs</strong> tab (whole network + MANDO). The audits come in the next versions.</p>
                   </div>
                   <div class="mb-3" data-only="vivo">
                     <label class="form-label fw-bold small" for="parser-processed-dir">MOs tratados (etapas 3 a 6)</label>
@@ -528,8 +528,31 @@
           <div class="card card-compact mb-3" data-only="claro">
             <div class="card-header bg-primary text-white"><i class="bi bi-geo-alt"></i> Claro cellref (MANDO)</div>
             <div class="card-body">
-              <p class="small mb-2">The Claro cellref joins the whole-network dump with the physical parameters of <code>mando_cells_&lt;date&gt;.csv</code> (coordinates, azimuth, tilt, height, MIMO). It will be available here in a next version.</p>
-              <p class="small text-muted mb-0">The Vivo generators (portal files, Hotel de BTS) are not used for Claro.</p>
+              <p class="small mb-2">Joins the <strong>whole-network</strong> TXT (parser output) with the physical parameters of <code>mando_cells_&lt;date&gt;.csv</code> (site coordinates, azimuth, tilt, height, MIMO). Writes <code>EUtranCell_TDD_FDD.csv</code>, <code>cellref_5g.xlsx</code>, the whole-network relations, <code>cadastro_alertas.xlsx</code> (cells not in MANDO, azimuth not from MANDO, positions that disagree) and <code>cadastro_resumo.json</code>. The Claro "Process MOs" reads this folder as cellref. Same output as the MoB Claro cellref.</p>
+              <div class="row g-3">
+                <div class="col-lg-6">
+                  <label class="form-label small fw-bold" for="claro-cellref-txt-dir">Network TXT folder (parser output, whole network)</label>
+                  <div class="input-group input-group-sm mb-1"><input class="form-control" id="claro-cellref-txt-dir" value="C:/Claro_Reports/Dumps"><button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-cellref-txt" title="Browse for folder"><i class="bi bi-folder2-open"></i></button></div>
+                  <p class="text-muted small mb-3">A dump by region or municipality gives a partial cellref: neighbors outside it lose coordinates.</p>
+                  <label class="form-label small fw-bold" for="claro-mando-path">MANDO (file, or folder with the newest <code>mando_cells_&lt;date&gt;.csv</code>)</label>
+                  <div class="input-group input-group-sm mb-1">
+                    <input class="form-control" id="claro-mando-path" value="C:/Claro_Reports/MANDO">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-mando-file" title="Choose a MANDO file (.csv or .csv.zip)"><i class="bi bi-file-earmark-spreadsheet"></i></button>
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-mando-folder" title="Choose a folder (the newest MANDO in it is used)"><i class="bi bi-folder2-open"></i></button>
+                  </div>
+                  <p class="text-muted small mb-0">In a folder, the newest date in the file name wins (<code>.csv</code> or <code>.csv.zip</code>).</p>
+                </div>
+                <div class="col-lg-6">
+                  <label class="form-label small fw-bold" for="claro-cellref-dir">Claro cellref folder (output)</label>
+                  <div class="input-group input-group-sm mb-1"><input class="form-control" id="claro-cellref-dir" value="C:/Claro_Reports/Cellref"><button class="btn btn-outline-secondary" type="button" id="btn-browse-claro-cellref-dir" title="Browse for folder"><i class="bi bi-folder2-open"></i></button></div>
+                  <p class="text-muted small mb-0">Must be different from the TXT folder and from the processed MOs folder (the file names overlap). The Vivo generators (portal files, Hotel de BTS) are never used for Claro.</p>
+                </div>
+              </div>
+              <hr class="my-2">
+              <button class="btn btn-primary btn-sm" type="button" id="btn-run-claro-cellref"><i class="bi bi-play-fill"></i> Generate Claro cellref</button>
+              <button class="btn btn-outline-secondary btn-sm ms-1" type="button" id="btn-cancel-claro-cellref" disabled><i class="bi bi-stop-fill"></i> Cancel</button>
+              <p class="small mt-2 mb-1" id="claro-cellref-status">Waiting.</p>
+              <textarea class="form-control font-monospace small" id="claro-cellref-log" rows="16" readonly placeholder="Progress of the Claro cellref appears here."></textarea>
             </div>
           </div>
           <div class="card card-compact mb-3" data-only="vivo">

@@ -59,6 +59,7 @@ const DEFAULT_PROCESSED_DIR = IS_CLARO ? `${CLARO_ROOT}/MOs` : 'C:/Dumps/LTE_Tot
 const DEFAULT_REPORT_DIR = IS_CLARO ? CLARO_ROOT : 'C:/Camilo';
 const DEFAULT_REFERENCE_DIR = IS_CLARO ? `${CLARO_ROOT}/Cellref` : 'C:/Camilo';
 const DEFAULT_EXPORT_DIR = IS_CLARO ? `${CLARO_ROOT}/Exports` : 'C:/Downloader/data/exports';
+const DEFAULT_MANDO_DIR = `${CLARO_ROOT}/MANDO`;
 
 // Every API call carries the operator; the server refuses jobs that would mix the two networks.
 (function addOperatorHeaders() {
@@ -305,6 +306,8 @@ function readFileAsText(file, encoding) {
 }
 
 function getSiteListSaveDir() {
+  // Claro: the cellref folder is the one the Claro cellref (MANDO) writes; the Vivo references card is hidden.
+  if (IS_CLARO) return normalizeFolder((document.getElementById('claro-cellref-dir') || {}).value) || DEFAULT_REFERENCE_DIR;
   const configured = (document.getElementById('site-list-folder-path') && document.getElementById('site-list-folder-path').value || '').trim();
   // Ignore old UI summary text from previous versions.
   if (configured && !/files selected\s*\(/i.test(configured)) return configured;
@@ -1922,6 +1925,89 @@ async function runCellrefs() {
   }
 }
 
+// ---------- Claro cellref (whole-network TXT + MANDO) ----------
+let _claroCellrefAbort = null;
+
+/** Plain-language problem with the Claro cellref folders, or '' (the script refuses the same cases). */
+function claroCellrefProblem(txtDir, mandoPath, outputDir) {
+  if (!txtDir || !mandoPath || !outputDir) return 'Fill the TXT folder, the MANDO and the cellref folder.';
+  const same = (a, b) => normalizeFolder(a).toLowerCase() === normalizeFolder(b).toLowerCase();
+  if (same(outputDir, txtDir)) return 'The cellref folder must be different from the TXT folder: EUtranCellRelation.txt, Slot.txt and 5G_NRCellDU.txt would replace the parser output.';
+  const processed = (document.getElementById('claro-processed-dir') || {}).value || DEFAULT_PROCESSED_DIR;
+  if (same(outputDir, processed)) return `The cellref folder must be different from the processed MOs folder (${processed}): EUtranCell_TDD_FDD.csv and 5G_NRCellDU.txt exist in both.`;
+  return '';
+}
+
+async function runClaroCellref() {
+  const txtDir = normalizeFolder(document.getElementById('claro-cellref-txt-dir').value);
+  const mandoPath = normalizeFolder(document.getElementById('claro-mando-path').value);
+  const outputDir = normalizeFolder(document.getElementById('claro-cellref-dir').value);
+  const log = document.getElementById('claro-cellref-log');
+  const status = document.getElementById('claro-cellref-status');
+  const problem = claroCellrefProblem(txtDir, mandoPath, outputDir);
+  if (problem) {
+    status.textContent = problem;
+    return;
+  }
+  const button = document.getElementById('btn-run-claro-cellref');
+  const cancel = document.getElementById('btn-cancel-claro-cellref');
+  _claroCellrefAbort = new AbortController();
+  button.disabled = true;
+  cancel.disabled = false;
+  status.textContent = 'Generating the Claro cellref...';
+  log.value = '';
+  try {
+    const response = await fetch(WORKFLOW_API_BASE + '/api/run-claro-cellref', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ txt_dir: txtDir, mando_path: mandoPath, output_dir: outputDir }),
+      signal: _claroCellrefAbort.signal
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      log.value += decoder.decode(value, {stream: true});
+      log.scrollTop = log.scrollHeight;
+    }
+    log.value += decoder.decode();
+    if (!/CLARO CELLREF DONE\./.test(log.value)) throw new Error('The Claro cellref failed. See the log above.');
+    status.textContent = /\[WARN\]/.test(log.value)
+      ? 'Done with warnings. Check the log and cadastro_alertas.xlsx.'
+      : `Claro cellref ready in ${outputDir}. Check cadastro_alertas.xlsx for cells outside MANDO.`;
+  } catch (error) {
+    status.textContent = error.name === 'AbortError' ? 'Cancelled.' : 'The Claro cellref failed.';
+    log.value += '\n' + (error.name === 'AbortError' ? 'Cancelled by the user.' : error.message) + '\n';
+  } finally {
+    _claroCellrefAbort = null;
+    button.disabled = false;
+    cancel.disabled = true;
+  }
+}
+
+function initClaroCellref() {
+  const bindFolder = (inputId, buttonId, storageKey) => {
+    const input = document.getElementById(inputId);
+    bindPathStorage(inputId, storageKey);
+    document.getElementById(buttonId).addEventListener('click', async () => {
+      const path = await browseFolder(input.value);
+      if (path) { input.value = path; input.dispatchEvent(new Event('change')); }
+    });
+  };
+  bindFolder('claro-cellref-txt-dir', 'btn-browse-claro-cellref-txt', 'downloader_claro_cellref_txt_dir');
+  bindFolder('claro-mando-path', 'btn-browse-claro-mando-folder', 'downloader_claro_mando_path');
+  bindFolder('claro-cellref-dir', 'btn-browse-claro-cellref-dir', 'downloader_claro_cellref_dir');
+  const mando = document.getElementById('claro-mando-path');
+  document.getElementById('btn-browse-claro-mando-file').addEventListener('click', async () => {
+    const start = /\.(csv|zip)$/i.test(mando.value) ? mando.value.replace(/[\\/][^\\/]*$/, '') : mando.value;
+    const picked = await openFileBrowser({ mode: 'files', exts: ['.csv', '.zip'], title: 'Select the MANDO file (mando_cells_<date>.csv)', initialPath: start });
+    if (picked && picked.length) { mando.value = picked[picked.length - 1].path; mando.dispatchEvent(new Event('change')); }
+  });
+  document.getElementById('btn-run-claro-cellref').addEventListener('click', runClaroCellref);
+  document.getElementById('btn-cancel-claro-cellref').addEventListener('click', () => { if (_claroCellrefAbort) _claroCellrefAbort.abort(); });
+}
+
 /** Run full parser pipeline via streaming API. */
 let _runParserAbort = null;
 
@@ -2256,6 +2342,9 @@ const CLARO_PATH_DEFAULTS = () => ({
   'parser-output-dir': DEFAULT_DUMP_DIR,
   'parser-processed-dir': DEFAULT_PROCESSED_DIR,
   'claro-processed-dir': DEFAULT_PROCESSED_DIR,
+  'claro-cellref-txt-dir': DEFAULT_DUMP_DIR,
+  'claro-mando-path': DEFAULT_MANDO_DIR,
+  'claro-cellref-dir': DEFAULT_REFERENCE_DIR,
   'parser-enriched-dir': DEFAULT_REPORT_DIR,
   'weekly-history-dir': DEFAULT_REPORT_DIR,
   'weekly-vivo-dir': '',
@@ -2493,7 +2582,7 @@ function applyTheme(theme) {
 }
 
 function anyLocalJobRunning() {
-  return Boolean(_runAllAbort || _runParserAbort || _cellrefAbort);
+  return Boolean(_runAllAbort || _runParserAbort || _cellrefAbort || _claroCellrefAbort);
 }
 
 async function switchOperator(target) {
@@ -2552,6 +2641,7 @@ function initOperatorControls() {
   processChk.addEventListener('change', () => {
     try { opStorage.setItem('downloader_claro_process_mos', processChk.checked ? '1' : '0'); } catch (_) {}
   });
+  initClaroCellref();
   initClaroScope();
 }
 

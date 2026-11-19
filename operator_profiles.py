@@ -12,7 +12,8 @@ every API call (header ``X-Downloader-Operator``). Rules here:
 - The Vivo notebook/enrichment endpoints are refused for Claro: running them
   on a Claro dump would silently produce wrong reports (UF = eNB[-2:], Hotel
   de BTS, PLMN 724/11...). The Claro processing of the MOs runs inside the
-  parser pipeline (pos_processamento_claro.py); cellrefs and audits come later.
+  parser pipeline (pos_processamento_claro.py) and the Claro cellref (MANDO)
+  has its own endpoint (cadastro_claro.py), refused for Vivo; audits come later.
 - A missing operator header means Vivo, so older clients keep working.
 """
 from __future__ import annotations
@@ -56,6 +57,11 @@ VIVO_ONLY_ENDPOINTS = {
     "/api/save-site-list": "the site list is built from the Vivo cellrefs",
     "/api/load-site-list": "the site list is built from the Vivo cellrefs",
     "/api/export-site-ids": "the Claro scope is chosen by region / municipality",
+}
+
+# Endpoints that only implement Claro rules.
+CLARO_ONLY_ENDPOINTS = {
+    "/api/run-claro-cellref": "the Claro cellref uses the MANDO export and the Claro network rules",
 }
 
 # POST endpoints that do not carry workflow paths.
@@ -146,6 +152,8 @@ def _dump_dir(endpoint: str, payload) -> str | None:
 def check_request(operator: str, endpoint: str, payload, claro_root=None) -> str | None:
     """Plain-language error when the request must not run; None when it is allowed."""
     label = "Claro" if operator == CLARO else "Vivo"
+    if operator != CLARO and endpoint in CLARO_ONLY_ENDPOINTS:
+        return f"Only available for Claro: {CLARO_ONLY_ENDPOINTS[endpoint]}. Switch to CLARO."
     if operator == CLARO:
         reason = VIVO_ONLY_ENDPOINTS.get(endpoint)
         if reason:

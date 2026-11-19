@@ -64,6 +64,16 @@ class CheckRequestTests(unittest.TestCase):
             self.assertIn("Not available for Claro", op.check_request(op.CLARO, endpoint, {}))
             self.assertIsNone(op.check_request(op.VIVO, endpoint, {}))
 
+    def test_claro_cellref_is_claro_only_and_stays_in_claro_folders(self):
+        payload = {"txt_dir": "C:/Claro_Reports/Dumps", "mando_path": "C:/MoB_Claro/cellref",
+                   "output_dir": "C:/Claro_Reports/Cellref"}
+        self.assertIn("Only available for Claro", op.check_request(op.VIVO, "/api/run-claro-cellref", payload))
+        self.assertIsNone(op.check_request(op.CLARO, "/api/run-claro-cellref", payload))
+        vivo_out = dict(payload, output_dir="C:/Camilo")
+        self.assertIn("output_dir", op.check_request(op.CLARO, "/api/run-claro-cellref", vivo_out))
+        vivo_mando = dict(payload, mando_path="C:/Cellref/mando_cells_2026-11-09.csv")
+        self.assertIn("mando_path", op.check_request(op.CLARO, "/api/run-claro-cellref", vivo_mando))
+
     def test_claro_process_mos_needs_its_own_folder(self):
         same = {"output_dir": "C:/Claro_Reports/Dumps", "customize_txts": True}
         self.assertIn("must be different", op.check_request(op.CLARO, "/api/run-parser-pipeline", same))

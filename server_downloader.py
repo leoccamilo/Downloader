@@ -52,6 +52,7 @@ POST_PROCESS_4_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_4_camilo.py")
 POST_PROCESS_5_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_5_tdd.py")
 POST_PROCESS_6_SCRIPT = os.path.join(SCRIPT_DIR, "post_process_6_5g.py")
 CLARO_POST_PROCESS_SCRIPT = os.path.join(SCRIPT_DIR, "pos_processamento_claro.py")
+CLARO_CELLREF_SCRIPT = os.path.join(SCRIPT_DIR, "cadastro_claro.py")
 WEEKLY_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "weekly_workflow.py")
 AUDIT_WORKFLOW_SCRIPT = os.path.join(SCRIPT_DIR, "audit_workflow.py")
 _workflow_lock = threading.Lock()
@@ -662,7 +663,7 @@ def _stream_checked_script(python_exe, script_path, args):
         processing_error = False
         for line in proc.stdout:
             if script_path in (XML_TO_TXT_SCRIPT, POST_PROCESS_4_SCRIPT, POST_PROCESS_5_SCRIPT, POST_PROCESS_6_SCRIPT,
-                               CLARO_POST_PROCESS_SCRIPT):
+                               CLARO_POST_PROCESS_SCRIPT, CLARO_CELLREF_SCRIPT):
                 if re.search(r"(?:^\s*ERROR\b|:\s*(?:ERROR|FAILED)\b)", line, re.I):
                     processing_error = True
             yield line if line.endswith("\n") else line + "\n"
@@ -938,6 +939,33 @@ def api_run_cellref():
                 yield "\nPIPELINE FAILED.\n"
         finally:
             os.unlink(path)
+
+    return _workflow_response(stream())
+
+
+@app.route("/api/run-claro-cellref", methods=["POST", "OPTIONS"])
+def api_run_claro_cellref():
+    """Claro cellref: whole-network TXT + MANDO -> cellref_5g.xlsx, EUtranCell_TDD_FDD.csv...
+
+    The operator guard (before_request) refuses it for Vivo and keeps every
+    path out of the Vivo folders. The output is the folder the Claro
+    "Process MOs" reads as cellref.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    data = request.get_json(force=True, silent=True) or {}
+    paths = {key: str(data.get(key) or "").strip().replace("/", os.sep)
+             for key in ("txt_dir", "mando_path", "output_dir")}
+    missing = [key for key, value in paths.items() if not value]
+    if missing:
+        return Response(f"{', '.join(missing)} required\n", status=400, mimetype="text/plain")
+
+    def stream():
+        yield "Claro cellref: whole-network TXT + MANDO (Claro network rules)\n"
+        code = yield from _stream_checked_script(
+            get_python_for_dump(), CLARO_CELLREF_SCRIPT,
+            [paths["txt_dir"], paths["mando_path"], paths["output_dir"]])
+        yield "\nCLARO CELLREF FAILED.\n" if code else "\nCLARO CELLREF DONE.\n"
 
     return _workflow_response(stream())
 

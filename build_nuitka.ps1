@@ -194,6 +194,7 @@ python -m nuitka `
     --include-data-files=regras_claro.py=regras_claro.py `
     --include-data-files=enm_dump_claro.py=enm_dump_claro.py `
     --include-data-files=pos_processamento_claro.py=pos_processamento_claro.py `
+    --include-data-files=cadastro_claro.py=cadastro_claro.py `
     --output-dir=dist_nuitka `
     --output-filename=Downloader.exe `
     launcher.py

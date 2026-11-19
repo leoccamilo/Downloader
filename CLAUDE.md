@@ -44,6 +44,12 @@ Downloader/
   `cellref_dir` = sem cadastro, nunca o cellref padrão da Vivo). Validação: rede
   inteira de PR (W42), 19 arquivos idênticos byte a byte ao original, com e sem
   cadastro. Ao trazer correção do MoB, comparar de novo do mesmo jeito.
+- Fase 4 (feita): `cadastro_claro.py` (cellref da Claro = TXT da rede inteira + MANDO
+  `mando_cells_<data>.csv`) copiado do MoB_Claro b9a443e, com `construir` sem alteração.
+  Roda pela aba Cellrefs (rota `/api/run-claro-cellref`, recusada para a Vivo).
+  Grava em `<raiz>/Cellref`, a mesma pasta que o "Process MOs" lê como cadastro
+  (`getSiteListSaveDir()` no modo Claro). Validação na W42: 8 arquivos idênticos
+  byte a byte ao original (ver `alteracoes.md`).
 - Scripts novos que o servidor roda precisam de `--include-data-files` no
   `build_nuitka.ps1` (o Nuitka ignora `.py` soltos).
 - Tema: variáveis `--marca*` em `styles.css`, trocadas por `html[data-operator]`;
