@@ -109,28 +109,48 @@ def _write_workflow_state(path, state):
     os.replace(temporary, path)
 
 
+def _is_compiled():
+    """True inside the .exe. Nuitka does not set sys.frozen; it defines __compiled__."""
+    return bool(getattr(sys, "frozen", False)) or "__compiled__" in globals()
+
+
+def _exe_dirs():
+    """Folders where the .exe really lives (not the onefile temp extraction folder).
+
+    In Nuitka onefile, sys.executable points to a python.exe inside the temp
+    folder that does not exist (Nuitka 4.3.5). The real folder comes from
+    __compiled__.containing_dir / original_argv0, or sys.argv[0].
+    """
+    dirs = []
+    compiled = globals().get("__compiled__")
+    for value in (getattr(compiled, "containing_dir", None),
+                  os.path.dirname(getattr(compiled, "original_argv0", "") or ""),
+                  os.path.dirname(sys.argv[0] or ""),
+                  os.path.dirname(sys.executable or "")):
+        if value:
+            folder = os.path.abspath(value)
+            if folder not in dirs:
+                dirs.append(folder)
+    return dirs
+
+
 def get_python_for_dump():
-    """Use bundled python_embed, venv's Python, or sys.executable for running dump/parser scripts."""
-    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    """Python for the dump/parser scripts: python_embed or venv next to the exe, else the system Python."""
+    bases = [SCRIPT_DIR] + [d for d in _exe_dirs() if d != SCRIPT_DIR]
     if sys.platform == "win32":
-        candidates = [
-            os.path.join(SCRIPT_DIR, "python_embed", "python.exe"),
-            os.path.join(SCRIPT_DIR, "venv", "Scripts", "python.exe"),
-            # When exe is in dist_nuitka/, check venv one level up (C:\Downloader\venv)
-            os.path.normpath(os.path.join(exe_dir, "..", "venv", "Scripts", "python.exe")),
-            os.path.join(exe_dir, "venv", "Scripts", "python.exe"),
-        ]
+        relative = (("python_embed", "python.exe"), ("venv", "Scripts", "python.exe"),
+                    # exe in dist_nuitka/: the venv is one level up (C:\Downloader\venv)
+                    ("..", "venv", "Scripts", "python.exe"))
     else:
-        candidates = [
-            os.path.join(SCRIPT_DIR, "python_embed", "bin", "python3"),
-            os.path.join(SCRIPT_DIR, "venv", "bin", "python"),
-            os.path.normpath(os.path.join(exe_dir, "..", "venv", "bin", "python")),
-            os.path.join(exe_dir, "venv", "bin", "python"),
-        ]
-    for c in candidates:
-        if os.path.isfile(c):
-            return c
-    if getattr(sys, "frozen", False):
+        relative = (("python_embed", "bin", "python3"), ("venv", "bin", "python"),
+                    ("..", "venv", "bin", "python"))
+    for base in bases:
+        for parts in relative:
+            candidate = os.path.normpath(os.path.join(base, *parts))
+            if os.path.isfile(candidate):
+                return candidate
+    if _is_compiled():
+        # Never sys.executable inside the exe: it is the exe itself or a python.exe that does not exist.
         system_python = shutil.which("python") or shutil.which("py")
         if system_python:
             return system_python
@@ -1288,7 +1308,7 @@ def api_local_places():
         seen_labels.add(label)
         places.append({"label": label, "path": p.replace("\\", "/"), "icon": icon})
 
-    app_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else SCRIPT_DIR
+    app_dir = (_exe_dirs() or [SCRIPT_DIR])[0] if _is_compiled() else SCRIPT_DIR
     add("Downloader data", os.path.join(app_dir, "data"), "bi-box-seam")
     add("Downloader data", "C:\\Downloader\\data", "bi-box-seam")
 
