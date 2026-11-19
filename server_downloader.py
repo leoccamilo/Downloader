@@ -134,9 +134,28 @@ def _exe_dirs():
     return dirs
 
 
+def _real_exe():
+    """Path of Downloader.exe itself (not the onefile temp folder), or None outside the exe."""
+    if not _is_compiled():
+        return None
+    compiled = globals().get("__compiled__")
+    for value in (getattr(compiled, "original_argv0", None), sys.argv[0] if sys.argv else None):
+        if value and str(value).lower().endswith(".exe") and os.path.isfile(value):
+            return os.path.abspath(value)
+    return None
+
+
 def get_python_for_dump():
-    """Python for the dump/parser scripts: python_embed or venv next to the exe, else the system Python."""
-    bases = [SCRIPT_DIR] + [d for d in _exe_dirs() if d != SCRIPT_DIR]
+    """Python for the dump/parser scripts.
+
+    Inside the exe: the exe itself, which runs ``[-u] script.py args`` with its
+    embedded Python (worker_mode.py) — no Python needed on the machine, like
+    the MoB Tool Box. From source: python_embed / venv, else the system Python.
+    """
+    exe = _real_exe()
+    if exe:
+        return exe
+    bases =[SCRIPT_DIR] + [d for d in _exe_dirs() if d != SCRIPT_DIR]
     if sys.platform == "win32":
         relative = (("python_embed", "python.exe"), ("venv", "Scripts", "python.exe"),
                     # exe in dist_nuitka/: the venv is one level up (C:\Downloader\venv)

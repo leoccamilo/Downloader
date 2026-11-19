@@ -46,6 +46,15 @@ class PythonForDumpTests(unittest.TestCase):
             for p in reversed(patches):
                 p.stop()
 
+    def test_inside_the_exe_the_exe_itself_runs_the_scripts(self):
+        exe = self.exe_dir / "Downloader.exe"
+        exe.write_text("")
+        embed = self.exe_dir / "python_embed" / "python.exe"
+        embed.parent.mkdir()
+        embed.write_text("")
+        # No Python is needed on the machine: worker_mode runs `exe -u script.py args`.
+        self.assertEqual(self._run(self._compiled()), os.path.abspath(str(exe)))
+
     def test_python_embed_next_to_the_real_exe(self):
         embed = self.exe_dir / "python_embed" / "python.exe"
         embed.parent.mkdir()

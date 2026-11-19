@@ -1,6 +1,18 @@
-# Dependencias do server_downloader.py (compiladas no exe)
-# NÃO incluir: pyarrow, lxml, xlsxwriter, enmscripting
-# (esses são usados apenas pelos scripts subprocess que rodam via Python do sistema)
+# Dependencias compiladas no Downloader.exe (venv_build).
+#
+# O exe roda o servidor E os scripts (dump, XML -> TXT, Process MOs, cellref,
+# notebooks semanais, audits) com o Python embutido (worker_mode.py): a maquina
+# nao precisa ter Python. Por isso as libs dos scripts entram aqui tambem.
+# Lista completa do que os scripts importam: worker_imports.py.
+#
+# enmscripting (Ericsson) nao esta no PyPI: o build_nuitka.ps1 instala o wheel
+#   C:\Tools\enm_client_scripting-1.22.2-py2.py3-none-any.whl
 flask>=2.0
 pandas
 openpyxl
+xlsxwriter
+lxml
+pyarrow
+haversine
+# requests: NAO listar. O wheel do enmscripting fixa requests==2.6.0 (a mesma versao da
+# venv de dev, onde o dump funciona); listar aqui faz o pip trocar de versao a cada build.

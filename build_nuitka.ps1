@@ -24,6 +24,13 @@ Write-Host "`nActivating build venv..." -ForegroundColor Yellow
 Write-Host "`nInstalling minimal server dependencies into venv_build..." -ForegroundColor Yellow
 python -m pip install --upgrade pip --quiet
 python -m pip install --upgrade -r requirements_build.txt
+# Biblioteca do ENM (Ericsson): nao esta no PyPI. Sem ela o dump nao roda no exe.
+$enmWheel = "C:\Tools\enm_client_scripting-1.22.2-py2.py3-none-any.whl"
+if (-not (Test-Path $enmWheel)) {
+    Write-Host "ERROR: $enmWheel not found (ENM scripting library for the dump)." -ForegroundColor Red
+    exit 1
+}
+python -m pip install --upgrade $enmWheel
 python -m pip install --upgrade nuitka zstandard ordered-set
 
 # Clean previous builds
@@ -70,6 +77,11 @@ def open_browser():
         print(f"Could not open browser: {e}")
 
 if __name__ == "__main__":
+    # "Downloader.exe [-u] script.py args" = the server asking the exe to run a
+    # script with its embedded Python (no Python needed on the machine).
+    from worker_mode import maybe_run_worker
+    maybe_run_worker()
+
     app_dir = os.path.dirname(os.path.abspath(__file__))
     if app_dir not in sys.path:
         sys.path.insert(0, app_dir)
@@ -110,18 +122,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Import verification passed" -ForegroundColor Green
 
-# Confirm pyarrow is NOT in venv_build (sanity check)
-$ErrorActionPreference = "Continue"
-python -c "import pyarrow" 2>$null
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "WARNING: pyarrow found in venv_build - it should not be here!" -ForegroundColor Red
-    Write-Host "Run: venv_build\Scripts\pip uninstall pyarrow -y" -ForegroundColor Yellow
-    $ErrorActionPreference = "Stop"
+# Every library the scripts use must import in venv_build, or the exe misses it
+# and the step fails only on the user's machine (worker_imports.py has the list).
+python -c "import worker_imports; print('worker libraries imported OK')"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: a library used by the scripts is missing in venv_build (see worker_imports.py)." -ForegroundColor Red
     exit 1
-} else {
-    Write-Host "OK: pyarrow not in venv_build (will not be included in exe)" -ForegroundColor Green
 }
-$ErrorActionPreference = "Stop"
 
 # Run Nuitka compilation
 Write-Host "`nStarting Nuitka compilation..." -ForegroundColor Yellow
@@ -134,11 +141,14 @@ Write-Host "This may take 10-20 minutes depending on your system..." -Foreground
 #   inflando o launcher.dll de ~50MB para 139MB (exe de 28MB para 46MB+).
 #   Esses flags bloqueiam isso. Sem eles, o exe dobra de tamanho.
 #   Sintoma do problema: warning "Undesirable import of 'pydoc' in pandas.tests.series.test_api"
+#   pydoc NAO e mais excluido (2026-11-19): pyarrow.compute importa pydoc (vendored/docscrape)
+#   e o exe com pyarrow quebrava no import do pandas. pydoc e pequeno; o que inflava era pandas.tests.
 #
 # venv_build (usada acima em vez da venv de dev):
-#   pyarrow/lxml/xlsxwriter estao na venv dev mas NAO na venv_build.
-#   Se o Nuitka os enxergar, inclui as DLLs do Arrow (~47MB) automaticamente.
-#   Por isso usamos venv_build com apenas flask+pandas+openpyxl.
+#   so o que esta em requirements_build.txt. Desde 2026-11-19 o exe roda tambem
+#   os scripts (worker_mode.py), entao pyarrow/lxml/xlsxwriter/haversine/
+#   enmscripting/requests entram de proposito: e o preco de nao precisar de
+#   Python na maquina. Nada alem disso (a venv de dev tem mais coisas).
 #
 # numpy 2.x (NAO pinnar numpy<2.0):
 #   numpy 1.26 tem OpenBLAS de 37MB; numpy 2.0 tem 32MB. 2.x e menor.
@@ -165,9 +175,18 @@ python -m nuitka `
     --nofollow-import-to=numpy.testing `
     --nofollow-import-to=numpy.tests `
     --nofollow-import-to=numpy.distutils `
-    --nofollow-import-to=pydoc `
     --nofollow-import-to=doctest `
     --nofollow-import-to=unittest `
+    --nofollow-import-to=pyarrow.tests `
+    --nofollow-import-to=lxml.html.tests `
+    --include-module=worker_mode `
+    --include-module=worker_imports `
+    --include-package=lxml `
+    --include-package=pyarrow `
+    --include-package=xlsxwriter `
+    --include-package=haversine `
+    --include-package=requests `
+    --include-package=enmscripting `
     --include-package=flask `
     --include-package=werkzeug `
     --include-package=jinja2 `
@@ -215,9 +234,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "`nNOTE: Console window is hidden (--windows-console-mode=disable)." -ForegroundColor Yellow
     Write-Host "Startup errors are written to downloader_error.log next to the exe." -ForegroundColor Yellow
 
-    Write-Host "`nIMPORTANT: The subprocess scripts (dump, parquet, xml, etc.) are embedded" -ForegroundColor Cyan
-    Write-Host "inside the .exe and extracted at runtime. They require Python to be installed" -ForegroundColor Cyan
-    Write-Host "on the machine (or place a python_embed folder next to the .exe)." -ForegroundColor Cyan
+    Write-Host "`nStandalone: the scripts (dump, XML -> TXT, MOs, cellref, audits) run with the" -ForegroundColor Cyan
+    Write-Host "Python embedded in the .exe (worker_mode.py). No Python is needed on the machine." -ForegroundColor Cyan
 
     # Create desktop shortcut
     Write-Host "`nCreating desktop shortcut..." -ForegroundColor Yellow

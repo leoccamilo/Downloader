@@ -15,10 +15,12 @@ Downloader/
 ├── regras_claro.py           # Regras da rede Claro PR (cópia do MoB_Claro)
 ├── enm_dump_claro.py         # 7 funções do enm_dump.py do MoB_Claro (cópia sem alteração)
 ├── requirements.txt          # Dependências de desenvolvimento (inclui lxml, etc.)
-├── requirements_build.txt    # Dependências do BUILD Nuitka (apenas o que o server usa)
+├── requirements_build.txt    # Dependências do BUILD Nuitka (servidor + libs dos scripts)
+├── worker_mode.py            # exe roda os scripts com o Python embutido (sem Python na máquina)
+├── worker_imports.py         # tudo o que os scripts importam (para o Nuitka embutir)
 ├── build_nuitka.ps1          # Script de build Nuitka
 ├── venv/                     # venv de desenvolvimento (completa, com pyarrow/lxml/etc.)
-├── venv_build/               # venv de build Nuitka (mínima — NÃO tem pyarrow/lxml)
+├── venv_build/               # venv de build Nuitka (só requirements_build.txt + wheel do ENM)
 └── dist_nuitka/              # Output do build — Downloader.exe
 ```
 
@@ -89,16 +91,23 @@ Benchmark (dump real de 196 MB, 85 MOs): antigo 11,7 s / pico 590 MB;
 ## Arquitetura: server vs subprocessos
 
 O `server_downloader.py` é um servidor Flask que **não executa** os dumps diretamente.
-Ele inicia subprocessos via `subprocess.Popen`, que rodam com um Python separado.
+Ele inicia subprocessos via `subprocess.Popen` (`[python, -u, script.py, args]`): assim
+cada etapa pode ser cancelada, libera a memória ao terminar e o log sai ao vivo.
 
-**A função `get_python_for_dump()`** resolve qual Python usar para os subprocessos:
-1. `python_embed/python.exe` (pasta ao lado do .exe — distribuição portátil)
-2. `venv/Scripts/python.exe`
-3. Python do sistema (`shutil.which("python")`)
-4. `sys.executable` (fallback)
+**O exe não precisa de Python na máquina (desde 2026-11-19), como o MoB_Tool_Box.**
+Dentro do exe, `get_python_for_dump()` devolve o PRÓPRIO `Downloader.exe`. O launcher
+chama primeiro `worker_mode.maybe_run_worker()`: se recebeu `[-u] <script>.py args`, roda o
+script com o Python embutido (`runpy`, `__main__`, `sys.argv`, código de saída) e sai; senão
+sobe o servidor. Os scripts continuam data files (`--include-data-files`), sem mudança.
+- `worker_imports.py` lista TUDO o que os scripts e notebooks importam (o Nuitka só embute o
+  que vê importado). `tests/test_worker_mode.py` varre scripts + `bundled_scripts` e falha se
+  faltar algum. Script novo com import novo → acrescentar lá.
+- `enmscripting` quebra no exe (lê o próprio fonte com `inspect.stack()`): o worker instala o
+  mesmo calço do MoB (`install_enmscripting_shim`) antes de rodar o script.
+- Nuitka 4.3.5 não define `sys.frozen` e `sys.executable` aponta para um python.exe inexistente
+  no temp: use `_is_compiled()` / `_real_exe()` / `_exe_dirs()` do servidor, nunca `sys.executable`.
 
-**Consequência:** os scripts subprocess (`dump_multiple_enms.py`, etc.) **NÃO precisam**
-estar compilados no exe. Eles são incluídos como data files e executados pelo Python do sistema.
+Fora do exe (código-fonte), `get_python_for_dump()` usa `python_embed/`, `venv/` ou o Python do sistema.
 
 ## Build com Nuitka
 
@@ -113,16 +122,20 @@ powershell -ExecutionPolicy Bypass -File build_nuitka.ps1
 ```
 
 ### O que o script faz
-1. Cria/usa `venv_build` (venv limpa, sem pyarrow/lxml)
-2. Instala apenas `requirements_build.txt` (flask, pandas, openpyxl)
-3. Verifica que pyarrow NÃO está na venv_build (sanity check)
-4. Cria `launcher.py` temporário
+1. Cria/usa `venv_build` (só `requirements_build.txt`, nada da venv de dev)
+2. Instala `requirements_build.txt` (servidor + libs dos scripts: pandas, openpyxl,
+   xlsxwriter, lxml, pyarrow, haversine, requests) e o wheel do enmscripting
+   (`C:\Tools\enm_client_scripting-1.22.2-...whl`; sem ele o build para)
+3. Verifica que `import worker_imports` funciona na venv_build
+4. Cria `launcher.py` temporário (modo worker primeiro, depois o servidor)
 5. Compila com Nuitka → `dist_nuitka/Downloader.exe`
 6. Limpa launcher.py temporário
 
 ### Output
-- `dist_nuitka/Downloader.exe` (~28 MB)
+- `dist_nuitka/Downloader.exe` (~46 MB, sem Python na máquina; era ~28 MB quando dependia do Python instalado)
 - Atalho no Start Menu criado automaticamente
+- **Depois de todo build, testar um subprocesso pelo exe** (parser, cellref) numa pasta isolada
+  e com PATH sem Python: o exe abre normal mesmo quando nada roda por trás.
 
 ---
 
@@ -137,6 +150,10 @@ arrow_compute (9.9 MB), parquet (6 MB), etc., o exe ficava com 62 MB.
 (sem pyarrow, lxml, xlsxwriter). Nuitka só vê o que está na venv ativa.
 
 **Nunca usar a `venv` completa para o build Nuitka.**
+
+**Atualização 2026-11-19:** pyarrow, lxml e xlsxwriter voltaram ao exe **de propósito**: o exe
+passou a rodar os scripts sem Python na máquina e a rotina semanal usa `string[pyarrow]`.
+Custo medido: 28,8 → ~46 MB. A regra da venv_build mínima continua (só o que os scripts usam).
 
 ---
 
@@ -158,12 +175,16 @@ WARNING: anti-bloat: Undesirable import of 'pydoc' in 'pandas.tests.series.test_
 --nofollow-import-to=numpy.testing
 --nofollow-import-to=numpy.tests
 --nofollow-import-to=numpy.distutils
---nofollow-import-to=pydoc
 --nofollow-import-to=doctest
 --nofollow-import-to=unittest
 ```
 
 **Resultado:** 1915 → 799 arquivos C, exe de 46.7 MB → 28.5 MB.
+
+`pydoc` saiu da lista em 2026-11-19: `pyarrow.compute` o importa, e com pyarrow no exe o
+`import pandas` quebrava ("Module 'pydoc' was actively excluded"). É pequeno; quem inflava
+era o `pandas.tests`. Para conferir antes de compilar:
+`venv_build\Scripts\python -X importtime -c "import worker_imports"` e procurar módulos excluídos.
 
 ---
 
@@ -197,8 +218,8 @@ Com cl.exe, `--lto=yes` aumentou o exe de 46.2 MB para 48.5 MB.
 | libcrypto-1_1.dll | 3.3 MB | Não |
 | pytz + tzdata (zoneinfo) | 3.5 MB | Possível (604 arquivos) |
 | **pandas.tests** | **~70 MB** | **SIM — `--nofollow-import-to=pandas.tests`** |
-| **pyarrow (arrow.dll etc.)** | **~47 MB** | **SIM — usar venv_build sem pyarrow** |
-| **lxml** | **6.6 MB** | **SIM — usar venv_build sem lxml** |
+| pyarrow (arrow.dll etc.) | ~47 MB | Não desde 2026-11-19 (rotina semanal no exe) |
+| lxml | 6.6 MB | Não desde 2026-11-19 (parser XML no exe) |
 
 ---
 
@@ -209,9 +230,9 @@ Sempre adicionar ao comando Nuitka quando incluir pandas:
 --nofollow-import-to=pandas.tests
 --nofollow-import-to=numpy.testing
 --nofollow-import-to=numpy.tests
---nofollow-import-to=pydoc
 --nofollow-import-to=doctest
 --nofollow-import-to=unittest
 ```
+(`pydoc` só pode ser excluído se nenhuma lib embutida o importar — o pyarrow importa.)
 
 E sempre usar uma **venv de build separada e mínima** (não a venv de dev).
