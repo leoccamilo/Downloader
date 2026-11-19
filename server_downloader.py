@@ -451,13 +451,19 @@ def add_cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = ", ".join(
-        ("Content-Type", op_profiles.HEADER_OPERATOR, op_profiles.HEADER_CLARO_ROOT))
+        ("Content-Type", op_profiles.HEADER_OPERATOR, op_profiles.HEADER_CLARO_ROOT, op_profiles.HEADER_VIVO_ROOT))
     return resp
 
 
 def _request_operator():
     """Operator chosen in the UI (header); a missing header means Vivo."""
     return op_profiles.normalize_operator(request.headers.get(op_profiles.HEADER_OPERATOR))
+
+
+def _request_vivo_root():
+    """'classic' (historical Vivo folders; also when the header is missing) or the Vivo root."""
+    from urllib.parse import unquote
+    return op_profiles.normalize_vivo_root(unquote(request.headers.get(op_profiles.HEADER_VIVO_ROOT) or ""))
 
 
 @app.before_request
@@ -471,7 +477,7 @@ def operator_guard():
     payload = request.get_json(force=True, silent=True)
     from urllib.parse import unquote
     claro_root = unquote(request.headers.get(op_profiles.HEADER_CLARO_ROOT) or "")
-    error = op_profiles.check_request(operator, request.path, payload, claro_root)
+    error = op_profiles.check_request(operator, request.path, payload, claro_root, _request_vivo_root())
     if error:
         return Response(f"ERROR: {error}\n", status=400, mimetype="text/plain")
     return None
@@ -481,6 +487,21 @@ def operator_guard():
 def api_busy():
     """Whether a dump/parser/audit job is running (the operator switch waits for it)."""
     return jsonify(busy=_workflow_lock.locked())
+
+
+@app.route("/api/vivo/folders")
+def api_vivo_folders():
+    """Vivo folders for the root in the header, and whether this machine has the classic folders.
+
+    A browser without a saved Vivo layout asks this once: the original machine
+    (C:/Camilo and C:/Dumps/LTE_Total exist) keeps the classic folders, a new
+    machine starts with the default root.
+    """
+    classic_present = all(os.path.isdir(op_profiles.VIVO_CLASSIC_FOLDERS[role]) for role in ("references", "processed"))
+    root = _request_vivo_root()
+    return jsonify(root=root, folders=op_profiles.vivo_folders(root), classic_present=classic_present,
+                   suggested=op_profiles.VIVO_CLASSIC if classic_present else op_profiles.DEFAULT_VIVO_ROOT,
+                   default_root=op_profiles.DEFAULT_VIVO_ROOT, layout=op_profiles.VIVO_ROOT_LAYOUT)
 
 
 @app.route("/api/claro/geography")
@@ -923,7 +944,7 @@ def api_run_weekly_workflow():
 @app.route("/api/audits", methods=["GET"])
 def api_audits():
     from audit_workflow import catalog
-    result = catalog()
+    result = catalog(op_profiles.vivo_folders(_request_vivo_root()))
     if _request_operator() == op_profiles.CLARO:
         # The registered audits implement Vivo rules; show them, but never run them on Claro data.
         for item in result["audits"]:
@@ -942,13 +963,15 @@ def api_run_audits():
         selected_audits(data.get("audit_ids"))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
+    # The audit notebooks have the classic Vivo paths hard-coded; audit_workflow translates them.
+    folders = op_profiles.vivo_folders(_request_vivo_root())
 
     def stream():
         path = None
         try:
             fd, path = tempfile.mkstemp(suffix=".json", prefix="audit_config_")
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump({"audit_ids": data["audit_ids"]}, handle)
+                json.dump({"audit_ids": data["audit_ids"], "folders": folders}, handle)
             code = yield from _stream_checked_script(get_python_for_dump(), AUDIT_WORKFLOW_SCRIPT, [path])
             if code:
                 yield "\nAUDITS FAILED.\n"

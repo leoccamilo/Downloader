@@ -1,5 +1,43 @@
 ﻿# Alterações Realizadas
 
+## 2026-11-19 — Vivo: pasta raiz para a equipe (ou as pastas clássicas)
+
+- Card **Vivo folders** na aba ENM Dump, no mesmo formato do card da Claro. Há dois modos:
+  - **Pastas clássicas:** `C:/Dumps/todos_enms`, `C:/Dumps/LTE_Total`, `C:/Camilo`,
+    `C:/Vivo Reports`, `C:/Camilao` e `C:/Cellref/...`. É o modo da máquina original;
+    nela nada muda.
+  - **Uma raiz para a equipe** (padrão `C:/Vivo_Downloader`), com as subpastas
+    `Dumps/todos_enms`, `Dumps/LTE_Total`, `Referencias` (no lugar de Camilo),
+    `Relatorios`, `Relatorios/Adicionais` (no lugar de Camilao), `Cellref/...` e `Exports`.
+- Na primeira abertura, o navegador escolhe o modo uma única vez. Se já tinha
+  configurações da Vivo, fica no modo clássico. Se não tinha, pergunta ao servidor
+  (`/api/vivo/folders`): o modo é clássico quando `C:/Camilo` e `C:/Dumps/LTE_Total`
+  existem na máquina; caso contrário, a raiz. Trocar de modo leva as pastas salvas
+  para o modo novo, papel por papel.
+- Os notebooks e os audits não foram editados. A rotina semanal já traduzia os
+  caminhos dela. Os audits passaram a traduzir com `audit_workflow.VivoPaths`, com a
+  mesma regra; no modo raiz, um caminho absoluto desconhecido interrompe o audit.
+  A tela passou a enviar também as pastas de saída dos cellrefs da Vivo, que antes
+  eram fixas (`C:/Cellref/LTE` e `NR`).
+- A trava entre operadoras agora considera a raiz da Vivo configurada (cabeçalho
+  `X-Downloader-Vivo-Root`) e também `C:/Vivo_Downloader`. Um dump da Vivo também
+  não pode apagar a raiz.
+- Validação com dados reais (semana 47): os 16 audits rodaram com as pastas clássicas
+  e com uma raiz que continha cópias das entradas (125 arquivos, 8,2 GB). Na rodada
+  clássica, os relatórios foram desviados para uma pasta temporária, para não tocar
+  nos relatórios reais. Os **22 relatórios saíram idênticos** (as planilhas comparadas
+  aba por aba, o CSV byte a byte).
+- Pela tela: escolha automática do modo clássico, troca para a raiz e volta, com
+  todos os campos e o catálogo de audits seguindo as pastas.
+- Testes: `tests/test_vivo_root.py` e `tests/test_vivo_root.cjs`.
+
+## 2026-11-19 — Exe sem Python na máquina
+
+- O `Downloader.exe` roda os scripts com o Python embutido (`worker_mode.py`), como o
+  MoB_Tool_Box. No teste com o exe isolado e o PATH sem Python, na W42 inteira, os
+  21 TXT, os 19 MOs e o cellref saíram idênticos byte a byte, sem nenhum `python.exe`
+  aberto. O exe passou de 28,8 para 46,4 MB.
+
 ## 2026-11-19 — Claro, fase 4: cellref da Claro pelo MANDO
 
 - Copiado do MoB_Claro (commit b9a443e): `cadastro_claro.py`. A função `construir`

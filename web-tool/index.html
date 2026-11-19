@@ -107,6 +107,31 @@
         <div class="container-fluid">
           <div class="row g-3">
             <div class="col-lg-6">
+              <!-- Vivo: classic folders (original machine) or one root for the team -->
+              <div class="card card-compact mb-3" data-only="vivo">
+                <div class="card-header bg-primary text-white">
+                  <i class="bi bi-folder2"></i> Vivo folders
+                </div>
+                <div class="card-body">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="vivo-layout" id="vivo-layout-classic">
+                    <label class="form-check-label small" for="vivo-layout-classic"><strong>Classic folders</strong> — <code>C:/Dumps</code>, <code>C:/Camilo</code>, <code>C:/Vivo Reports</code>, <code>C:/Cellref</code> (as the weekly notebooks were written)</label>
+                  </div>
+                  <div class="form-check mb-1">
+                    <input class="form-check-input" type="radio" name="vivo-layout" id="vivo-layout-root">
+                    <label class="form-check-label small" for="vivo-layout-root"><strong>One root folder</strong> — everything inside it (<code>Dumps</code>, <code>Referencias</code>, <code>Relatorios</code>, <code>Cellref</code>)</label>
+                  </div>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control font-monospace" id="vivo-root-dir" placeholder="C:/Vivo_Downloader">
+                    <button class="btn btn-outline-secondary" type="button" id="btn-browse-vivo-root" title="Browse for folder"><i class="bi bi-folder2-open"></i></button>
+                    <button class="btn btn-primary" type="button" id="btn-apply-vivo-root"><i class="bi bi-check2"></i> Apply</button>
+                  </div>
+                  <p class="form-text small mb-1 mt-1">Changing it moves every Vivo folder that still follows the old layout; files already written stay where they are. The weekly notebooks and audits keep their original rules: only the folders change. Vivo never reads or writes the Claro folders.</p>
+                  <details class="small"><summary class="text-muted">Folders in use</summary><div id="vivo-folders-list" class="mt-1"></div></details>
+                  <p class="small mb-0 mt-1" id="vivo-root-status"></p>
+                </div>
+              </div>
+
               <!-- Claro: one editable root for all Claro folders -->
               <div class="card card-compact mb-3" data-only="claro">
                 <div class="card-header bg-primary text-white">

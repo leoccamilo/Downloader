@@ -52,6 +52,20 @@ Downloader/
   Grava em `<raiz>/Cellref`, a mesma pasta que o "Process MOs" lê como cadastro
   (`getSiteListSaveDir()` no modo Claro). Validação na W42: 8 arquivos idênticos
   byte a byte ao original (ver `alteracoes.md`).
+- **Pastas da Vivo (2026-11-19):** "clássicas" (C:/Dumps/todos_enms, C:/Dumps/LTE_Total,
+  C:/Camilo, C:/Vivo Reports, C:/Camilao, C:/Cellref/...) — a máquina original, onde os
+  notebooks foram escritos — ou **uma raiz** para a equipe (padrão `C:/Vivo_Downloader`, com
+  `Dumps/`, `Referencias/` no lugar de Camilo, `Relatorios/`, `Relatorios/Adicionais/` no lugar
+  de Camilao, `Cellref/`, `Exports/`). Fonte única: `operator_profiles.VIVO_CLASSIC_FOLDERS` /
+  `VIVO_ROOT_LAYOUT` / `vivo_folders()`, espelhados no topo do `app.js` (teste compara).
+  Cabeçalho `X-Downloader-Vivo-Root` ("classic" ou a raiz; sem cabeçalho = clássico).
+  No primeiro uso o navegador escolhe uma vez: já tinha configurações da Vivo → clássico; senão
+  `/api/vivo/folders` (clássico se C:/Camilo e C:/Dumps/LTE_Total existem). Card "Vivo folders"
+  troca o layout e leva as pastas salvas papel por papel (`applyVivoRoot`).
+  Os notebooks e audits NÃO foram editados: a rotina semanal já traduzia caminhos
+  (`AdaptNotebook` + `roots`); os audits traduzem com `audit_workflow.VivoPaths` (mesma regra;
+  com raiz, caminho absoluto desconhecido para o audit). Validação: os 16 audits com pastas
+  clássicas × raiz com cópia das entradas, relatórios comparados (ver `alteracoes.md`).
 - Scripts novos que o servidor roda precisam de `--include-data-files` no
   `build_nuitka.ps1` (o Nuitka ignora `.py` soltos).
 - Tema: variáveis `--marca*` em `styles.css`, trocadas por `html[data-operator]`;

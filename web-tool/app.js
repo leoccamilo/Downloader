@@ -26,8 +26,24 @@ const opStorage = {
 
 const DEFAULT_CLARO_ROOT = 'C:/Claro_Reports';
 const STORAGE_CLARO_ROOT = 'downloader_claro_root';
+const DEFAULT_VIVO_ROOT = 'C:/Vivo_Downloader';
+const STORAGE_VIVO_ROOT = 'downloader_vivo_root';  // Vivo namespace (no prefix): 'classic' or a root folder
+const VIVO_CLASSIC = 'classic';
 /** Same list as operator_profiles.VIVO_ROOTS: Claro never reads or writes these. */
-const VIVO_ROOTS = ['C:/Camilo', 'C:/Camilao', 'C:/Vivo Reports', 'C:/Dumps', 'C:/Cellref', 'C:/MoB', 'C:/Downloader/cellref'];
+const VIVO_ROOTS = ['C:/Camilo', 'C:/Camilao', 'C:/Vivo Reports', 'C:/Dumps', 'C:/Cellref', 'C:/MoB', 'C:/Downloader/cellref', DEFAULT_VIVO_ROOT];
+/** Same as operator_profiles.VIVO_CLASSIC_FOLDERS / VIVO_ROOT_LAYOUT (tests/test_vivo_root.py compares them). */
+const VIVO_CLASSIC_FOLDERS = {
+  raw: 'C:/Dumps/todos_enms', processed: 'C:/Dumps/LTE_Total', references: 'C:/Camilo',
+  reports: 'C:/Vivo Reports', extras: 'C:/Camilao', cellref_lte_input: 'C:/Cellref/LTE_dump',
+  cellref_nr_input: 'C:/Cellref/NR_dump', cellref_lte_output: 'C:/Cellref/LTE', cellref_nr_output: 'C:/Cellref/NR',
+  exports: 'C:/Downloader/data/exports',
+};
+const VIVO_ROOT_LAYOUT = {
+  raw: 'Dumps/todos_enms', processed: 'Dumps/LTE_Total', references: 'Referencias',
+  reports: 'Relatorios', extras: 'Relatorios/Adicionais', cellref_lte_input: 'Cellref/LTE_dump',
+  cellref_nr_input: 'Cellref/NR_dump', cellref_lte_output: 'Cellref/LTE', cellref_nr_output: 'Cellref/NR',
+  exports: 'Exports',
+};
 
 function normalizeFolder(path) {
   return String(path || '').trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/\/+$/, '');
@@ -44,21 +60,59 @@ function getClaroRoot() {
   try { return normalizeFolder(localStorage.getItem(CLARO_PREFIX + STORAGE_CLARO_ROOT)) || DEFAULT_CLARO_ROOT; } catch (_) { return DEFAULT_CLARO_ROOT; }
 }
 
+/**
+ * Vivo layout saved in this browser: 'classic' (historical folders C:/Camilo, C:/Dumps...,
+ * kept by the original machine) or one root folder (team machines). null = not chosen yet:
+ * the page asks the server once (initVivoLayout) and reloads.
+ */
+function getSavedVivoRoot() {
+  try {
+    const value = normalizeFolder(localStorage.getItem(STORAGE_VIVO_ROOT));
+    return value ? (value.toLowerCase() === VIVO_CLASSIC ? VIVO_CLASSIC : value) : null;
+  } catch (_) { return null; }
+}
+
+/** Vivo folders by role (mirror of operator_profiles.vivo_folders). */
+function vivoFolders(root) {
+  if (!root || root === VIVO_CLASSIC) return Object.assign({}, VIVO_CLASSIC_FOLDERS);
+  const base = normalizeFolder(root);
+  return Object.fromEntries(Object.entries(VIVO_ROOT_LAYOUT).map(([role, sub]) => [role, `${base}/${sub}`]));
+}
+
+const SAVED_VIVO_ROOT = getSavedVivoRoot();
+const VIVO_ROOT = SAVED_VIVO_ROOT || VIVO_CLASSIC;
+const VIVO_FOLDERS = vivoFolders(VIVO_ROOT);
+
+/** Every Vivo folder (historical + configured root): Claro must stay out of them. */
+function allVivoRoots() {
+  return VIVO_ROOT === VIVO_CLASSIC ? VIVO_ROOTS.slice() : VIVO_ROOTS.concat([VIVO_ROOT]);
+}
+
 /** Plain-language problem with a Claro root, or '' when it is usable (mirrors the server check). */
 function claroRootProblem(root) {
   const value = normalizeFolder(root);
   if (!value) return 'Enter a folder.';
   if (/^[a-z]:$/i.test(value) || value === '') return `A drive root (${value || '/'}) cannot be used. Use a folder such as ${DEFAULT_CLARO_ROOT}.`;
-  const overlap = VIVO_ROOTS.find(vivo => isUnderFolder(value, vivo) || isUnderFolder(vivo, value));
+  const overlap = allVivoRoots().find(vivo => isUnderFolder(value, vivo) || isUnderFolder(vivo, value));
   return overlap ? `${value} overlaps the Vivo folder ${overlap}. Choose a separate folder.` : '';
 }
 
 const CLARO_ROOT = getClaroRoot();
-const DEFAULT_DUMP_DIR = IS_CLARO ? `${CLARO_ROOT}/Dumps` : 'C:/Dumps/todos_enms';
-const DEFAULT_PROCESSED_DIR = IS_CLARO ? `${CLARO_ROOT}/MOs` : 'C:/Dumps/LTE_Total';
-const DEFAULT_REPORT_DIR = IS_CLARO ? CLARO_ROOT : 'C:/Camilo';
-const DEFAULT_REFERENCE_DIR = IS_CLARO ? `${CLARO_ROOT}/Cellref` : 'C:/Camilo';
-const DEFAULT_EXPORT_DIR = IS_CLARO ? `${CLARO_ROOT}/Exports` : 'C:/Downloader/data/exports';
+
+/** Plain-language problem with a Vivo root, or '' (mirrors operator_profiles.validate_vivo_root). */
+function vivoRootProblem(root) {
+  const value = normalizeFolder(root);
+  if (!value) return 'Enter a folder.';
+  if (/^[a-z]:$/i.test(value)) return `A drive root (${value}) cannot be used. Use a folder such as ${DEFAULT_VIVO_ROOT}.`;
+  const claro = [CLARO_ROOT, 'C:/MoB_Claro'].find(c => isUnderFolder(value, c) || isUnderFolder(c, value));
+  return claro ? `${value} overlaps the Claro folder ${claro}. Choose a separate folder.` : '';
+}
+
+const DEFAULT_DUMP_DIR = IS_CLARO ? `${CLARO_ROOT}/Dumps` : VIVO_FOLDERS.raw;
+const DEFAULT_PROCESSED_DIR = IS_CLARO ? `${CLARO_ROOT}/MOs` : VIVO_FOLDERS.processed;
+const DEFAULT_REPORT_DIR = IS_CLARO ? CLARO_ROOT : VIVO_FOLDERS.references;
+const DEFAULT_REFERENCE_DIR = IS_CLARO ? `${CLARO_ROOT}/Cellref` : VIVO_FOLDERS.references;
+const DEFAULT_EXPORT_DIR = IS_CLARO ? `${CLARO_ROOT}/Exports` : VIVO_FOLDERS.exports;
 const DEFAULT_MANDO_DIR = `${CLARO_ROOT}/MANDO`;
 
 // Every API call carries the operator; the server refuses jobs that would mix the two networks.
@@ -72,6 +126,7 @@ const DEFAULT_MANDO_DIR = `${CLARO_ROOT}/MANDO`;
     const headers = new Headers(options.headers || (typeof input !== 'string' && input.headers) || {});
     headers.set('X-Downloader-Operator', OPERATOR);
     headers.set('X-Downloader-Claro-Root', encodeURIComponent(CLARO_ROOT));
+    headers.set('X-Downloader-Vivo-Root', encodeURIComponent(VIVO_ROOT));
     options.headers = headers;
     return nativeFetch(input, options);
   };
@@ -1852,6 +1907,9 @@ function getCellrefOptions() {
     lte_input_dir: document.getElementById('cellref-lte-input-dir').value.trim(),
     nr_input_dir: document.getElementById('cellref-nr-input-dir').value.trim(),
     parameter_dir: document.getElementById('cellref-parameter-dir').value.trim(),
+    // Not on screen: they follow the Vivo folders (classic C:/Cellref/LTE and NR).
+    lte_output_dir: VIVO_FOLDERS.cellref_lte_output,
+    nr_output_dir: VIVO_FOLDERS.cellref_nr_output,
     refresh_reports: document.getElementById('chk-cellref-refresh-reports').checked
   };
 }
@@ -2354,8 +2412,32 @@ const CLARO_PATH_DEFAULTS = () => ({
   'file-viewer-output-dir': DEFAULT_EXPORT_DIR,
 });
 
+/** Vivo path inputs by folder role. Classic = the HTML defaults (unchanged on the original machine). */
+const VIVO_PATH_DEFAULTS = () => ({
+  'enm-output-dir': VIVO_FOLDERS.raw,
+  'site-list-folder-path': VIVO_FOLDERS.references,
+  'parser-input-dir': VIVO_FOLDERS.raw,
+  'parser-output-dir': VIVO_FOLDERS.raw,
+  'parser-processed-dir': VIVO_FOLDERS.processed,
+  'parser-enriched-dir': VIVO_FOLDERS.references,
+  'weekly-history-dir': VIVO_FOLDERS.references,
+  'weekly-vivo-dir': VIVO_FOLDERS.reports,
+  'cellref-lte-input-dir': VIVO_FOLDERS.cellref_lte_input,
+  'cellref-nr-input-dir': VIVO_FOLDERS.cellref_nr_input,
+  'cellref-parameter-dir': VIVO_FOLDERS.references,
+  'file-viewer-output-dir': VIVO_FOLDERS.exports,
+});
+
 function applyClaroDefaultPaths() {
-  for (const [id, value] of Object.entries(CLARO_PATH_DEFAULTS())) {
+  applyDefaultPaths(CLARO_PATH_DEFAULTS());
+}
+
+function applyVivoDefaultPaths() {
+  applyDefaultPaths(VIVO_PATH_DEFAULTS());
+}
+
+function applyDefaultPaths(defaults) {
+  for (const [id, value] of Object.entries(defaults)) {
     const input = document.getElementById(id);
     if (input) {
       input.value = value;
@@ -2684,8 +2766,111 @@ function migrateWeeklyDefaults() {
   } catch (_) {}
 }
 
+/**
+ * First Vivo use in this browser: choose the layout once, before any default is saved.
+ * A browser that already has Vivo settings is the original machine -> classic folders.
+ * Otherwise the server says whether C:/Camilo and C:/Dumps/LTE_Total exist here.
+ * Returns true when the page will reload.
+ */
+function initVivoLayout() {
+  if (IS_CLARO || SAVED_VIVO_ROOT !== null) return false;
+  const usedBefore = [STORAGE_ENM_LIST, STORAGE_PROFILES, STORAGE_LAST_OUTPUT_DIR, 'downloader_auto_input_migrated_v1']
+    .some(key => { try { return localStorage.getItem(key) !== null; } catch (_) { return false; } });
+  const save = root => {
+    try { localStorage.setItem(STORAGE_VIVO_ROOT, root); } catch (_) { return false; }
+    window.location.reload();
+    return true;
+  };
+  if (usedBefore) return save(VIVO_CLASSIC);
+  fetch(WORKFLOW_API_BASE + '/api/vivo/folders')
+    .then(response => response.json())
+    .then(data => save(data.suggested || DEFAULT_VIVO_ROOT))
+    .catch(() => save(DEFAULT_VIVO_ROOT));
+  return true;
+}
+
+/** Re-base every saved Vivo folder from the current layout to the new one (role by role), then reload. */
+function applyVivoRoot(next) {
+  const status = document.getElementById('vivo-root-status');
+  const target = next === VIVO_CLASSIC ? VIVO_CLASSIC : normalizeFolder(next);
+  if (target !== VIVO_CLASSIC) {
+    const problem = vivoRootProblem(target);
+    if (problem) {
+      status.className = 'small mb-0 mt-1 text-danger';
+      status.textContent = problem;
+      return;
+    }
+  }
+  if (target.toLowerCase() === VIVO_ROOT.toLowerCase()) {
+    status.className = 'small mb-0 mt-1 text-muted';
+    status.textContent = 'The Vivo folders are unchanged.';
+    return;
+  }
+  const oldFolders = vivoFolders(VIVO_ROOT);
+  const newFolders = vivoFolders(target);
+  // Longest folder first: C:/Dumps/LTE_Total must win over a shorter match.
+  const roles = Object.keys(oldFolders).sort((a, b) => oldFolders[b].length - oldFolders[a].length);
+  const rebase = value => {
+    if (typeof value !== 'string') return value;
+    const role = roles.find(r => isUnderFolder(value, oldFolders[r]));
+    return role ? newFolders[role] + normalizeFolder(value).slice(normalizeFolder(oldFolders[role]).length) : value;
+  };
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || key.startsWith(CLARO_PREFIX) || key === STORAGE_VIVO_ROOT) continue;
+      const value = localStorage.getItem(key);
+      if (key === STORAGE_PROFILES) {
+        const data = JSON.parse(value || '{}');
+        (data.profiles || []).forEach(profile => {
+          profile.output_dir = rebase(profile.output_dir);
+          if (profile.dump_output_dir) profile.dump_output_dir = rebase(profile.dump_output_dir);
+        });
+        localStorage.setItem(key, JSON.stringify(data));
+      } else if (rebase(value) !== value) {
+        localStorage.setItem(key, rebase(value));
+      }
+    }
+    localStorage.setItem(STORAGE_VIVO_ROOT, target);
+  } catch (error) {
+    status.className = 'small mb-0 mt-1 text-danger';
+    status.textContent = `Could not save the Vivo folders: ${error.message}`;
+    return;
+  }
+  window.location.reload();
+}
+
+function initVivoFolders() {
+  if (IS_CLARO) return;
+  const classic = document.getElementById('vivo-layout-classic');
+  const rootMode = document.getElementById('vivo-layout-root');
+  const input = document.getElementById('vivo-root-dir');
+  const list = document.getElementById('vivo-folders-list');
+  classic.checked = VIVO_ROOT === VIVO_CLASSIC;
+  rootMode.checked = !classic.checked;
+  input.value = VIVO_ROOT === VIVO_CLASSIC ? DEFAULT_VIVO_ROOT : VIVO_ROOT;
+  const labels = { raw: 'Dump + TXT', processed: 'Processed MOs', references: 'References / history',
+                   reports: 'Reports', extras: 'Extra reports', cellref_lte_input: 'Cellref portal LTE',
+                   cellref_nr_input: 'Cellref portal NR', cellref_lte_output: 'Cellref LTE', cellref_nr_output: 'Cellref NR',
+                   exports: 'Exports' };
+  list.innerHTML = Object.entries(VIVO_FOLDERS).map(([role, path]) =>
+    `<div><span class="text-muted">${escapeHtml(labels[role] || role)}:</span> <code>${escapeHtml(path)}</code></div>`).join('');
+  const sync = () => { input.disabled = classic.checked; };
+  classic.addEventListener('change', sync);
+  rootMode.addEventListener('change', sync);
+  sync();
+  document.getElementById('btn-apply-vivo-root').addEventListener('click', () => applyVivoRoot(classic.checked ? VIVO_CLASSIC : input.value));
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyVivoRoot(input.value); } });
+  document.getElementById('btn-browse-vivo-root').addEventListener('click', async () => {
+    const path = await browseFolder(input.value);
+    if (path) { input.value = path; rootMode.checked = true; sync(); }
+  });
+}
+
 function init() {
+  if (initVivoLayout()) return;
   if (IS_CLARO) applyClaroDefaultPaths();
+  else applyVivoDefaultPaths();
   migrateWeeklyDefaults();
   updateStatusBar();
   const statusTs = document.getElementById('status-timestamp');
@@ -2985,6 +3170,7 @@ function init() {
   // Auto-load site list from Base dir on startup (if sites_list.txt exists)
   if (!IS_CLARO) tryAutoLoadSiteListFromBaseDir(true);
   initOperatorControls();
+  initVivoFolders();
 }
 
 document.addEventListener('DOMContentLoaded', init);

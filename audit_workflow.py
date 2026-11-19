@@ -6,14 +6,62 @@ import gc
 from importlib.util import find_spec
 import json
 from pathlib import Path
+import re
 import sys
 import traceback
 from bundled_sources import AUDIT_SCRIPTS
+import operator_profiles
 
+# Classic Vivo folders, hard-coded in the audit notebooks/scripts.
 CAMILO = Path('C:/Camilo')
 PROCESSED = Path('C:/Dumps/LTE_Total')
 RAW = Path('C:/Dumps/todos_enms')
 VIVO = Path('C:/Vivo Reports')
+
+# Hard-coded prefix in the notebooks -> folder role (operator_profiles.vivo_folders).
+_CLASSIC_PREFIXES = (('C:/Dumps/todos_enms', 'raw'), ('C:/Dumps/LTE_Total', 'processed'),
+                     ('C:/Vivo Reports', 'reports'), ('C:/Camilao', 'extras'), ('C:/Camilo', 'references'))
+
+
+class VivoPaths:
+    """Translate the classic paths of the audits to the Vivo folders in use.
+
+    Same rule as weekly_workflow.AdaptNotebook: prefix match by folder, case
+    insensitive (the notebooks write both LTE_Total and LTE_total), and with a
+    Vivo root an absolute path that is not one of the classic folders stops the
+    audit instead of writing somewhere unexpected. Classic folders = no change.
+    """
+
+    def __init__(self, folders=None):
+        self.folders = dict(folders or operator_profiles.VIVO_CLASSIC_FOLDERS)
+        self.classic = all(str(self.folders.get(role, '')).lower() == path.lower()
+                           for role, path in operator_profiles.VIVO_CLASSIC_FOLDERS.items())
+
+    def folder(self, role):
+        return Path(self.folders[role])
+
+    def translate(self, text):
+        """Translated path text, the same text when it is not a classic Vivo path, or ValueError."""
+        normalized = text.replace('\\', '/')
+        lowered = normalized.lower()
+        for prefix, role in _CLASSIC_PREFIXES:
+            low = prefix.lower()
+            if lowered == low or lowered.startswith(low + '/'):
+                if self.classic:
+                    return text
+                suffix = normalized[len(prefix):].lstrip('/')
+                translated = str(self.folders[role]).replace('\\', '/').rstrip('/')
+                if suffix:
+                    translated += '/' + suffix
+                if normalized.endswith('/') and not translated.endswith('/'):
+                    translated += '/'
+                return translated
+        if not self.classic and re.match(r'^[A-Za-z]:[/\\]', text):
+            raise ValueError(f'Caminho absoluto sem pasta Vivo correspondente no audit: {text}')
+        return text
+
+    def path(self, path):
+        return Path(self.translate(str(path).replace('\\', '/')))
 
 
 def audit(identifier, title, folder, notebook, inputs, outputs, note=''):
@@ -107,8 +155,9 @@ AUDITS.extend([
 ])
 
 
-def resolved_files(item, key, week):
-    return [Path('C:/') / value.format(week=week) for value in item[key]]
+def resolved_files(item, key, week, paths=None):
+    paths = paths or VivoPaths()
+    return [paths.path(Path('C:/') / value.format(week=week)) for value in item[key]]
 
 
 def notebook_cells(path):
@@ -132,7 +181,9 @@ def notebook_cells(path):
             yield index, source
 
 
-def check_audit(item, week, available_outputs=()):
+def check_audit(item, week, available_outputs=(), paths=None):
+    paths = paths or VivoPaths()
+    references, raw = paths.folder('references'), paths.folder('raw')
     problems = []
     path = Path(item['path'])
     if not path.is_file():
@@ -151,33 +202,34 @@ def check_audit(item, week, available_outputs=()):
     for name in sorted(imports):
         if find_spec(name) is None:
             problems.append(f'Dependência ausente: {name}')
-    for filename in resolved_files(item, 'inputs', week):
+    for filename in resolved_files(item, 'inputs', week, paths):
         if not filename.is_file() and filename not in available_outputs:
             problems.append(f'Entrada ausente: {filename}')
     if item['id'] == 'new-sites':
         for prefix in ('EUtranCell_TDD_FDD', '5G_NRCellDU'):
-            if len(list(CAMILO.glob(prefix + '_[0-9]*.txt'))) < 2:
-                problems.append(f'Histórico insuficiente: {CAMILO}/{prefix}_<semana>.txt (mínimo 2 semanas)')
+            if len(list(references.glob(prefix + '_[0-9]*.txt'))) < 2:
+                problems.append(f'Histórico insuficiente: {references}/{prefix}_<semana>.txt (mínimo 2 semanas)')
     if item['id'] == 'pscell-endc':
-        if not (RAW / 'GNBCUUPFunction.txt').is_file() and not list(RAW.glob('GNBCUUPFunction_*_part*.parquet')):
-            problems.append(f'Entrada bruta ausente: {RAW}/GNBCUUPFunction.txt ou GNBCUUPFunction_*_part*.parquet')
+        if not (raw / 'GNBCUUPFunction.txt').is_file() and not list(raw.glob('GNBCUUPFunction_*_part*.parquet')):
+            problems.append(f'Entrada bruta ausente: {raw}/GNBCUUPFunction.txt ou GNBCUUPFunction_*_part*.parquet')
     return problems
 
 
-def catalog():
+def catalog(folders=None):
+    paths = VivoPaths(folders)
     week = int(datetime.today().strftime('%U')) + 1
     entries = []
     for item in AUDITS:
         dependencies = [entry for entry in entries if entry['id'] in item.get('depends_on', [])]
         available = [Path(output) for entry in dependencies if entry['ready'] for output in entry['outputs']]
-        problems = check_audit(item, week, available)
+        problems = check_audit(item, week, available, paths)
         for dependency in dependencies:
             if not dependency['ready']:
                 problems.append(f"Audit necessário pendente: {dependency['title']}")
-        entries.append(dict(item, path=Path(item['path']).name, embedded=True, inputs=[str(p) for p in resolved_files(item, 'inputs', week)],
-                            outputs=[str(p) for p in resolved_files(item, 'outputs', week)],
+        entries.append(dict(item, path=Path(item['path']).name, embedded=True, inputs=[str(p) for p in resolved_files(item, 'inputs', week, paths)],
+                            outputs=[str(p) for p in resolved_files(item, 'outputs', week, paths)],
                             ready=not problems, problems=problems))
-    return dict(week=week, audits=entries)
+    return dict(week=week, audits=entries, folders=paths.folders)
 
 
 def selected_audits(identifiers):
@@ -197,11 +249,16 @@ def emit(item, status, **details):
     print('AUDIT_EVENT=' + json.dumps(dict(id=item['id'], status=status, **details), ensure_ascii=False), flush=True)
 
 
-def execute_audit(item, week, output_mapper=None):
-    """Execute original code. output_mapper is used only by isolated validation."""
+def execute_audit(item, week, output_mapper=None, paths=None):
+    """Execute original code with its paths translated to the Vivo folders in use.
+
+    output_mapper is used only by isolated validation (classic folders, reports elsewhere).
+    """
     import pandas as pd
     from audit_exports import write_audit_excel
-    outputs = resolved_files(item, 'outputs', week)
+    paths = paths or VivoPaths()
+    raw = paths.folder('raw')
+    outputs = resolved_files(item, 'outputs', week, paths)
     before = {}
     for target in outputs:
         actual = output_mapper(target) if output_mapper else target
@@ -234,6 +291,20 @@ def execute_audit(item, week, output_mapper=None):
                     return node
             tree = MapPaths().visit(tree)
             ast.fix_missing_locations(tree)
+        elif not paths.classic:
+            # The notebooks keep their classic paths; point them at the Vivo root in use.
+            class VivoFolders(ast.NodeTransformer):
+                def visit_Constant(self, node):
+                    if isinstance(node.value, str):
+                        translated = paths.translate(node.value)
+                        if translated != node.value:
+                            return ast.copy_location(ast.Constant(translated), node)
+                    return node
+            try:
+                tree = VivoFolders().visit(tree)
+            except ValueError as exc:
+                raise RuntimeError(f"{Path(item['path']).name}, célula {index}: {exc}") from exc
+            ast.fix_missing_locations(tree)
         try:
             old_argv, old_path = sys.argv, sys.path[:]
             try:
@@ -248,11 +319,11 @@ def execute_audit(item, week, output_mapper=None):
                 sys.argv, sys.path[:] = old_argv, old_path
             # ENDC's original loader consumes Parquet. A TXT raw MO can supply
             # exactly the same dataframe without creating intermediate files.
-            if item['id'] == 'pscell-endc' and 'def load_parquet' in source and (RAW / 'GNBCUUPFunction.txt').is_file():
+            if item['id'] == 'pscell-endc' and 'def load_parquet' in source and (raw / 'GNBCUUPFunction.txt').is_file():
                 def load_raw_txt(pattern, columns=None):
                     if 'GNBCUUPFunction_' not in pattern:
                         raise ValueError(f'Padrão bruto não suportado: {pattern}')
-                    filename = RAW / 'GNBCUUPFunction.txt'
+                    filename = raw / 'GNBCUUPFunction.txt'
                     for encoding in ('utf-8-sig', 'latin-1'):
                         try:
                             return pd.read_csv(filename, sep='\t', usecols=columns, encoding=encoding, low_memory=False)
@@ -271,26 +342,29 @@ def execute_audit(item, week, output_mapper=None):
     return [str(p) for p in outputs]
 
 
-def run_audits(identifiers):
+def run_audits(identifiers, folders=None):
+    paths = VivoPaths(folders)
     items = selected_audits(identifiers)
     week = int(datetime.today().strftime('%U')) + 1
     # Check the entire selection before any report is overwritten.
     invalid = False
     available_outputs = []
     for item in items:
-        problems = check_audit(item, week, available_outputs)
+        problems = check_audit(item, week, available_outputs, paths)
         if problems:
             invalid = True
             emit(item, 'blocked', message='; '.join(problems))
         else:
-            available_outputs.extend(resolved_files(item, 'outputs', week))
+            available_outputs.extend(resolved_files(item, 'outputs', week, paths))
     if invalid:
         raise ValueError('Verificação falhou. Nenhum audit foi iniciado.')
     print(f'Audits: {len(items)} | Semana dos notebooks: {week}', flush=True)
+    if not paths.classic:
+        print(f"Pastas Vivo: referências {paths.folder('references')} | relatórios {paths.folder('reports')}", flush=True)
     for item in items:
         print(f"\nAudit: {item['title']}\nArquivo: {item['path']}", flush=True)
         try:
-            outputs = execute_audit(item, week)
+            outputs = execute_audit(item, week, paths=paths)
         except Exception as exc:
             emit(item, 'failed', message=str(exc))
             raise
@@ -308,7 +382,7 @@ def main():
     args = parser.parse_args()
     try:
         config = json.loads(Path(args.config).read_text(encoding='utf-8'))
-        run_audits(config.get('audit_ids'))
+        run_audits(config.get('audit_ids'), config.get('folders'))
     except Exception:
         traceback.print_exc()
         print('AUDITS FAILED.', flush=True)
